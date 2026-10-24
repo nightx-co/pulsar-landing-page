@@ -1,0 +1,57 @@
+---
+title: Runtime
+description: Explore how the Pulsar engine polymorphically adapts across V8 Isolate, Serverless VM, and Persistent execution environments.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Card, Cards } from 'fumadocs-ui/components/card';
+import { Server, Cpu, Cloud, Code } from 'lucide-react';
+
+The **Pulsar engine** uses polymorphic runtime drivers to seamlessly manage queue processing across ephemeral serverless environments and dedicated persistent infrastructure.
+
+<Callout type="info">
+  Pulsar automatically adjusts its scheduling, state tracking, and lifecycle hooks based on the configured runtime enum.
+</Callout>
+
+# Code Usage
+
+```typescript
+import { Pulsar, PulsarRuntime } from "pulsar";
+
+const engine = new Pulsar({
+    runtime : PulsarRuntime.PERSISTENT,
+    // configs
+})
+```
+
+## Supported Runtimes
+
+<Tabs items={['V8 Isolate', 'Serverless VM', 'Persistent']}>
+  <Tab value="V8 Isolate">
+    ### `V8_ISOLATE`
+
+    Designed for ultra-ephemeral V8 isolate environments such as **Cloudflare Workers**, **Supabase Edge Functions**, and **Deno Deploy**.
+
+    - **Lifecycle:** Inbound requests share a warm memory space until the isolate shuts down.
+    - **Engine Strategy:** Relies on an active `isolate` instance to monitor remaining lifespan, sync dynamic global state, and schedule ticks before cloud providers terminate the isolate.
+  </Tab>
+
+  <Tab value="Serverless VM">
+    ### `SERVERLESS_VM`
+
+    Tailored for containerized or function-based serverless environments including **AWS Lambda**, **GCP Cloud Run**, and **Docker-based FaaS**.
+
+    - **Lifecycle:** Dedicated process/container sandboxes with bounded execution limits or event-driven lifespans.
+    - **Engine Strategy:** Simplifies state management by foregoing continuous memory tracking while safely handling process spin-up and teardown between invocations.
+  </Tab>
+
+  <Tab value="Persistent">
+    ### `PERSISTENT`
+
+    Built for traditional long-running infrastructure such as **AWS EC2**, **VPS instances**, **K8s pods**, and local Node.js/Deno daemons.
+
+    - **Lifecycle:** Continuous, uninterrupted execution context and non-ephemeral process lifetime.
+    - **Engine Strategy:** Utilizes native background event loops, stateful in-memory caching, and continuous tick schedules without relying on external cloud provider lifecycle hooks.
+  </Tab>
+</Tabs>

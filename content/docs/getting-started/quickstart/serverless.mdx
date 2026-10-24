@@ -1,0 +1,155 @@
+---
+title: Serverless
+description: Set up Pulsar in stateless, timeout-constrained serverless environments like AWS Lambda, Vercel Functions, or Google Cloud Functions.
+---
+
+import { Cards, Card } from 'fumadocs-ui/components/card';
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Step, Steps } from 'fumadocs-ui/components/steps';
+
+# Quick Start: Serverless VM Runtime
+
+Learn how to configure Pulsar for stateless **Serverless VM** execution environments (such as AWS Lambda, Vercel, or Google Cloud Functions) using execution timeouts and `createPulsarRequestHandler`.
+
+---
+
+<Steps>
+  <Step>
+    ### Define Your Queues
+
+    Define your queues in a dedicated `queues.ts` file. In Serverless VM environments, you can configure polling profiles and consumer options matched to your function setup.
+
+    ```typescript title="src/queues.ts"
+    import { createQueue } from "@pulsar";
+
+    export const Queue1 = createQueue({
+      queue: "q_1",
+      type: "STANDARD",
+      concurrency: 10,
+      cycleTickLimit: 10,
+      maxJobsPerTick: 1000,
+      n: 1,
+      sleep: 10,
+      // String presets: REALTIME | STANDARD | RELAXED | ULTRA_EFFICIENT | BALANCED | CUSTOM
+      profile: "REALTIME",
+      // Pooler strategy: interval-driven-pooler | event-driven-pooler
+      pooler: "interval-driven-pooler",
+      consumer: {
+        type: "http",
+        url: "http://localhost:9999/test-f",
+        headers: {
+          Authorization: `Bearer ${process.env.SUPABASE_ANON_KEY}`,
+        },
+      },
+    });
+    ```
+  </Step>
+
+  <Step>
+    ### Configure Storage & Drivers
+
+    In `setup.ts`, initialize the storage drivers and combine them using `PulsarUnifiedStorage`.
+
+    ```typescript title="src/setup.ts"
+    import { Queue1, Queue2, Queue3 } from "./queues.ts";
+    import { Pulsar, PulsarRuntime } from "@pulsar";
+    import { PostgresDriver, PulsarUnifiedStorage, RedisDriver } from "@pulsar/storage";
+    import { createPulsarRequestHandler, type GetEngine } from "@pulsar/server";
+
+    const cacheStorage = new RedisDriver({
+      protocol: "tcp",
+      keyPrefix: "pulsar",
+      connectionString: "host.docker.internal:6379",
+    });
+
+    const postgresDriver = new PostgresDriver({
+      connectionString: "postgresql://postgres:password@host.docker.internal:5432/postgres",
+      unloggedTableSchema: "pulsar_engine",
+    });
+
+    const unifiedStorage = new PulsarUnifiedStorage({
+      cache: cacheStorage,
+      db: postgresDriver,
+      strategy: "AUTO",
+    });
+    ```
+  </Step>
+
+  <Step>
+    ### Create Engine Factory with Timeout Controls
+
+    Define your `getEngine` factory using `PulsarRuntime.SERVERLESS_VM` and explicitly pass `timeoutMs` to guarantee the engine stops cleanly before the serverless host terminates.
+
+    ```typescript title="src/setup.ts"
+    const getEngine = ({ instanceId, lockKey }: GetEngine) => {
+      const engine = new Pulsar({
+        runtime: PulsarRuntime.SERVERLESS_VM,
+        timeoutMs: 15000, // 15-second execution boundary
+        storage: unifiedStorage,
+        queues: [Queue1, Queue2, Queue3],
+        swarmConfig: {
+          maxGlobalConcurrency: 1,
+          globalMaxJobsPerTick: 100_000,
+        },
+        engine: {
+          selfURL: "[http://host.docker.internal:9999/process-job](http://host.docker.internal:9999/process-job)",
+          selfInvocationMethod: "auto_using_pgnet",
+          selfInvocationIntervalSec: 5,
+          healthCheckIntervalSec: 15,
+          cycleTickLimit: 1000,
+          tickConcurrency: "sequential",
+          lockKey,
+          instanceId,
+        },
+      });
+
+      engine.installIntegrations([
+        // Add optional plugins/event integrations here
+      ]);
+
+      return engine;
+    };
+
+    export const pulsarHandler = createPulsarRequestHandler({
+      unifiedStorage,
+      getEngine,
+    });
+    ```
+
+    <Callout type="warn" title="Execution Timeout Matching">
+      Always set `timeoutMs` slightly below your cloud platform's function execution limit (e.g., set `timeoutMs: 12000` for a 15-second AWS Lambda timeout) to allow grace periods for state flushing.
+    </Callout>
+  </Step>
+
+  <Step>
+    ### Export Function Entry Point
+
+    Expose `pulsarHandler` inside your serverless function handler (e.g., Next.js API routes, AWS Lambda handlers, or standard HTTP web request handlers).
+
+    ```typescript title="src/index.ts"
+    import { pulsarHandler } from "./setup.ts";
+
+    export async function POST(req: Request) {
+      return await pulsarHandler.handle(req);
+    }
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Next Steps
+
+<Cards>
+  <Card href="/docs/deployments/overview" title="Deployments Guide">
+    Learn best practices for configuring Pulsar across AWS Lambda, Vercel, and GCP.
+  </Card>
+
+  <Card href="/docs/configurations/queue" title="Queue Options">
+    Explore concurrency limits and polling strategies tailored for serverless functions.
+  </Card>
+
+  <Card href="/docs/core-concepts/unified-storage-system" title="Unified Storage System">
+    Understand how caching and PostgreSQL connection pooling operate under serverless workloads.
+  </Card>
+</Cards>

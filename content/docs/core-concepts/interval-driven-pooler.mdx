@@ -1,0 +1,77 @@
+---
+title: Interval Driven Pooler (IDP)
+description: Your first document
+---
+
+
+# Interval-Driven Pooler
+
+The **Interval-Driven Pooler (IDP)** is Pulsar's recurring, time-driven queue processing mode.
+
+Instead of waiting for a queue-specific event, the Pulsar Engine **actively wakes up at configured intervals and runs its tick cycle**. The engine checks the configured interval-driven queues for available work and processes anything it finds.
+
+The important part is that **the engine runs because the interval says it should run, not because work exists**.
+
+## How It Works
+
+When an IDP execution starts, the engine begins its normal tick processing.
+
+For each tick, Pulsar checks the configured interval-driven queues and determines whether there is work available. If jobs exist, they are pulled and dispatched according to the queue's configuration.
+
+If no jobs exist, the tick still executes.
+
+For example, if a queue has a `cycleTickLimit` of `10` and there are no jobs available, Pulsar does not immediately stop because the queue is empty. The engine continues through its configured tick cycle.
+
+The execution therefore looks conceptually like:
+
+**Wake Up → Run Tick → Check Queues → No Work → Run Next Tick → Check Queues → ... → Finish Cycle → Wait → Wake Up Again**
+
+This continues regardless of whether the queues are currently producing work.
+
+## Continuous Polling
+
+The defining characteristic of IDP is **continuous polling through repeated engine executions**.
+
+After an execution cycle finishes, Pulsar waits for the configured interval and invokes the engine again. The new execution starts another tick cycle and checks the queues again.
+
+This creates a recurring processing loop:
+
+**Engine Execution → Tick Cycle → Interval → Engine Execution → Tick Cycle → Interval → ...**
+
+The queue does not need to notify Pulsar that new work has arrived. Pulsar will discover that work exists during its next polling cycle.
+
+
+
+## Shared Coordination
+
+IDP uses a **shared execution lock** to coordinate interval-driven processing.
+
+The lock is global across the interval-driven queues, allowing a single IDP execution to act as the coordinator for those queues.
+
+This is important because multiple engine executions should not independently begin the same interval-driven processing cycle at the same time.
+
+The shared lock therefore establishes a single active IDP execution for the interval-driven workload.
+
+## Why Use Interval-Driven Pooling?
+
+IDP is useful when work should be **reliably discovered through periodic polling** rather than requiring the engine to be explicitly awakened for every job.
+
+It is particularly suitable when:
+
+* Periodic processing is acceptable.
+* A small amount of polling latency is acceptable.
+* Queues may contain scheduled or delayed work.
+* The system should continue discovering jobs even when no external wake-up event is available.
+* Multiple queues can be checked together by the same engine execution.
+
+The trade-off is that the engine continues performing its polling cycle even when there is nothing to process.
+
+## The Core Idea
+
+The simplest way to think about the Interval-Driven Pooler is:
+
+> **IDP does not wait for work. It wakes up on a schedule, checks for work, runs its configured tick cycle, and then wakes up again.**
+
+It is therefore a **time-driven processing model** where the Pulsar Engine itself repeatedly initiates queue processing.
+
+The presence or absence of jobs does not determine whether the engine wakes up. **The configured interval does.**

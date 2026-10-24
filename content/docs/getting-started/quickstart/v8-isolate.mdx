@@ -1,0 +1,165 @@
+---
+title: V8 Isolate
+description: Set up Pulsar in ephemeral V8 Isolate runtimes like Deno, Cloudflare Workers, or Supabase Edge Functions using request handlers.
+---
+
+import { Cards, Card } from 'fumadocs-ui/components/card';
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Step, Steps } from 'fumadocs-ui/components/steps';
+
+# Quick Start: V8 Isolate Runtime
+
+Learn how to configure Pulsar for short-lived, request-driven **V8 Isolate** environments (such as Deno, Cloudflare Workers, or Supabase Edge Functions) using `IsolateInstance` and `createPulsarRequestHandler`.
+
+---
+
+<Steps>
+  <Step>
+    ### Define Your Queues
+
+    Create your queue definitions inside `queues.ts`. In V8 isolate environments, you can assign profile string presets like `"REALTIME"` or custom interval strategies.
+
+    ```typescript title="src/queues.ts"
+    import { createQueue } from "@pulsar";
+
+    export const Queue1 = createQueue({
+      queue: "q_1",
+      type: "STANDARD",
+      concurrency: 10,
+      cycleTickLimit: 10,
+      maxJobsPerTick: 1000,
+      n: 1,
+      sleep: 10,
+      // String presets: REALTIME | STANDARD | RELAXED | ULTRA_EFFICIENT | BALANCED | CUSTOM
+      profile: "REALTIME",
+      // Pooler strategy: interval-driven-pooler | event-driven-pooler
+      pooler: "interval-driven-pooler",
+      consumer: {
+        type: "http",
+        url: "http://localhost:9999/test-f",
+        headers: {
+          Authorization: `Bearer ${process.env.SUPABASE_ANON_KEY}`,
+        },
+      },
+    });
+    ```
+  </Step>
+
+  <Step>
+    ### Configure Storage & Isolate Instance
+
+    Set up your shared drivers and initialize `IsolateInstance` inside `setup.ts` to manage runtime memory and cold start lifecycles.
+
+    ```typescript title="src/setup.ts"
+    import { Queue1, Queue2, Queue3 } from "./queues.ts";
+    import { IsolateInstance, Pulsar, PulsarRuntime } from "@pulsar";
+    import { PostgresDriver, PulsarUnifiedStorage, RedisDriver } from "@pulsar/storage";
+    import { createPulsarRequestHandler, type GetEngine } from "@pulsar/server";
+
+    // Define maximum isolate execution lifespan before recycling (e.g. 30 seconds)
+    const MAX_ISOLATE_LIFESPAN_MS = 30_000;
+
+    const cacheStorage = new RedisDriver({
+      protocol: "tcp",
+      keyPrefix: "pulsar",
+      connectionString: "host.docker.internal:6379",
+    });
+
+    const postgresDriver = new PostgresDriver({
+      connectionString: "postgresql://postgres:password@host.docker.internal:5432/postgres",
+      unloggedTableSchema: "pulsar_engine",
+    });
+
+    const unifiedStorage = new PulsarUnifiedStorage({
+      cache: cacheStorage,
+      db: postgresDriver,
+      strategy: "AUTO",
+    });
+
+    // Manages memory and isolate lifespan across incoming worker executions
+    const isolate = new IsolateInstance(MAX_ISOLATE_LIFESPAN_MS);
+    ```
+
+    <Callout type="info" title="Isolate Lifespan">
+      Set `MAX_ISOLATE_LIFESPAN_MS` based on your cloud platform's max execution boundaries (e.g., Supabase Edge Functions, Deno Deploy, or Cloudflare Workers).
+    </Callout>
+  </Step>
+
+  <Step>
+    ### Create Engine Factory & Request Handler
+
+    Define your dynamic engine factory function and pass it into `createPulsarRequestHandler`.
+
+    ```typescript title="src/setup.ts"
+    // Dynamic Engine Factory for request-driven worker invocations
+    const getEngine = ({ instanceId, lockKey }: GetEngine) => {
+      const engine = new Pulsar({
+        runtime: PulsarRuntime.V8_ISOLATE,
+        storage: unifiedStorage,
+        isolate: isolate,
+        queues: [Queue1, Queue2, Queue3],
+        swarmConfig: {
+          maxGlobalConcurrency: 1,
+          globalMaxJobsPerTick: 100_000,
+        },
+        engine: {
+          selfURL: "[http://host.docker.internal:9999/process-job](http://host.docker.internal:9999/process-job)",
+          selfInvocationMethod: "auto_using_pgnet",
+          selfInvocationIntervalSec: 5,
+          healthCheckIntervalSec: 15,
+          cycleTickLimit: 1000,
+          tickConcurrency: "sequential",
+          lockKey,
+          instanceId,
+        },
+        autoMigrate: false,
+        onEvents: {
+          queueComplete: (ctx) => console.log(`Completed queue: ${ctx.queue}`),
+        },
+      });
+
+      engine.installIntegrations([
+        // Add optional plugins/event integrations here
+      ]);
+
+      return engine;
+    };
+
+    export const pulsarHandler = createPulsarRequestHandler({
+      isolate,
+      unifiedStorage,
+      getEngine,
+    });
+    ```
+  </Step>
+
+  <Step>
+    ### Bind to Your Server Request Handler
+
+    Export the server entry point (e.g. `index.ts` using `Deno.serve` or standard Web Fetch API handlers).
+
+    ```typescript title="src/index.ts"
+    import { pulsarHandler } from "./setup.ts";
+
+    Deno.serve(async (req: Request) => await pulsarHandler.handle(req));
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Next Steps
+
+<Cards>
+  <Card href="/docs/deployments/overview" title="Deployments Overview">
+    Explore deployment setups across Deno, Supabase Edge, and serverless containers.
+  </Card>
+
+  <Card href="/docs/configurations/queue" title="Queue Options">
+    Learn how `V8_ISOLATE` handles queue concurrency and polling profiles.
+  </Card>
+
+  <Card href="/docs/core-concepts/unified-storage-system" title="Unified Storage">
+    Understand how Redis caching accelerates isolate response cycles.
+  </Card>
+</Cards>

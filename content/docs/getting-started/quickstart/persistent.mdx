@@ -1,0 +1,153 @@
+---
+title: Persistent
+description: Set up and run your first Pulsar queue using a persistent runtime environment.
+---
+
+import { Cards, Card } from 'fumadocs-ui/components/card';
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Step, Steps } from 'fumadocs-ui/components/steps';
+
+# Quick Start: Persistent Runtime
+
+Learn how to initialize storage drivers, define queues, and start the Pulsar engine in a persistent runtime environment (Node.js, Bun, Docker, or long-running servers).
+
+---
+
+<Steps>
+  <Step>
+    ### Import Pulsar Core and Storage Modules
+
+    Import the main `Pulsar` engine along with the required storage drivers and unified storage abstractions.
+
+    ```typescript title="src/index.ts"
+    import { Pulsar, PulsarRuntime } from "pulsar";
+    import { PostgresDriver, PulsarUnifiedStorage, RedisDriver } from "pulsar/storage";
+    import { createQueue } from "pulsar";
+    ```
+  </Step>
+
+  <Step>
+    ### Initialize Storage and Drivers
+
+    Configure your primary PostgreSQL driver and an optional Redis cache driver. Combine them using `PulsarUnifiedStorage`.
+
+    ```typescript title="src/index.ts"
+    // Optional: Redis cache driver for ultra-low latency caching
+    const cacheStorage = new RedisDriver({
+      protocol: "tcp",
+      keyPrefix: "pulsar",
+      connectionString: "127.0.0.1:6379",
+    });
+
+    // Required: PostgreSQL driver for persistent state and message queue storage
+    const postgresDriver = new PostgresDriver({
+      connectionString: "postgresql://postgres:password@localhost:5432/postgres",
+      unloggedTableSchema: "pulsar_engine",
+    });
+
+    // Combine drivers into unified storage
+    const unifiedStorage = new PulsarUnifiedStorage({
+      cache: cacheStorage,
+      db: postgresDriver,
+      strategy: "AUTO",
+    });
+    ```
+
+    <Callout type="info" title="Redis is Optional">
+      Redis caching is optional. To learn more about how caching strategies work, see the [Unified Storage System](/docs/core-concepts/unified-storage) documentation.
+    </Callout>
+  </Step>
+
+  <Step>
+    ### Define Your Queues
+
+    Create your queue configurations inside a dedicated queue file (e.g., `queue.ts`).
+
+    ```typescript title="src/queue.ts"
+    import { createQueue } from "pulsar";
+
+    export const Queue1 = createQueue({
+      queue: "q_1",
+      type: "STANDARD",
+      concurrency: 10,
+      cycleTickLimit: 10,
+      maxJobsPerTick: 1000,
+      n: 10,
+      sleep: 10,
+      // Preset options: REALTIME | STANDARD | RELAXED | ULTRA_EFFICIENT | BALANCED | CUSTOM
+      profile: {
+        activePollMs: 100,
+        backoffPollMs: 100,
+        maxTimerMs: 500,
+        idlePollMs: 100,
+      },
+      // Pooler options: interval-driven-pooler (IDP) | event-driven-pooler (EDP)
+      pooler: "interval-driven-pooler",
+      consumer: {
+        type: "http",
+        url: "http://localhost:9999/test-f",
+        headers: {
+          Authorization: `Bearer ${process.env.SUPABASE_ANON_KEY}`,
+        },
+      },
+    });
+    ```
+
+    <Callout type="info">
+      For full options and parameter descriptions, check the [Queue Configurations](/docs/configurations/queue/concurrency) guide.
+    </Callout>
+  </Step>
+
+  <Step>
+    ### Initialize and Launch the Engine
+
+    Instantiate `Pulsar` passing your runtime type, storage, queues, swarm config, and engine configuration.
+
+    ```typescript title="src/index.ts"
+    const engine = new Pulsar({
+      runtime: PulsarRuntime.PERSISTENT,
+      storage: unifiedStorage,
+      queues: [Queue1, Queue2, Queue3],
+      swarmConfig: {
+        maxGlobalConcurrency: 1000,
+        globalMaxJobsPerTick: 100_000,
+      },
+      engine: {
+        selfURL: "[http://host.docker.internal:9999/process-job](http://host.docker.internal:9999/process-job)",
+        selfInvocationMethod: "auto_using_pgnet",
+        selfInvocationIntervalSec: 5,
+        healthCheckIntervalSec: 15,
+        cycleTickLimit: 1000,
+        tickConcurrency: "sequential",
+        lockKey: "pulsar:lock:idp",
+        instanceId: crypto.randomUUID(),
+      },
+    });
+
+    // Boot up the engine processing cycle
+    await engine.start();
+    ```
+
+    <Callout type="info">
+      For full options and parameter descriptions, check the [Engine Configurations](/docs/configurations/engine/runtime) guide.
+    </Callout>
+  </Step>
+</Steps>
+
+---
+
+## Next Steps
+
+<Cards>
+  <Card href="/docs/configurations/queue" title="Queue Configuration">
+    Explore concurrency, retry strategies, profiles, and consumer types.
+  </Card>
+
+  <Card href="/docs/core-concepts/unified-storage-system" title="Unified Storage System">
+    Learn how PostgreSQL and Redis combine for dynamic caching and state management.
+  </Card>
+
+  <Card href="/docs/deployments/overview" title="Deployments">
+    Learn how to run Pulsar in Docker, serverless platforms, or Kubernetes.
+  </Card>
+</Cards>

@@ -1,0 +1,63 @@
+---
+title: Tick Cycle Limit
+description: Configure the maximum tick budget allocated to a queue during an execution cycle.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The `cycleTickLimit` property defines the tick budget (quantum) allocated to a specific queue during an isolate's execution run. Once this queue completes the specified number of ticks, the engine considers the queue's work budget exhausted for the current cycle.
+
+While the engine-level `cycleTickLimit` sets a global ceiling across all queues combined, this per-queue `cycleTickLimit` controls how many ticks an individual queue is allowed to execute within that run.
+
+## Usage
+
+Pass `cycleTickLimit` inside the `createQueue` configuration object:
+
+```ts
+export const Queue3 = createQueue({
+  queue: "q_3",
+  type: "STANDARD",
+  concurrency: 10,
+  cycleTickLimit: 10, // [!code highlight]
+  maxJobsPerTick: 1000,
+  // ... other queue options
+});
+```
+
+---
+
+## Configuration Reference
+
+- **Type:** `number`
+- **Default:** `10`
+- **Recommended Maximum:** `20`
+
+---
+
+## Execution Behavior by Runtime
+
+The ideal value for `cycleTickLimit` depends heavily on your execution environment:
+
+### Serverless & V8 Isolate Runtimes
+
+In serverless or edge environments (like V8 Isolates, AWS Lambda, Vercel, or Cloudflare Workers), execution contexts have strict duration limits.
+
+* **Recommended Default:** `10`
+* **Maximum Safe Upper Limit:** `20` (Warning Zone)
+
+Setting `cycleTickLimit` above 20—especially when running multiple queues—pins execution to the same serverless instance for too long. This dramatically increases the risk of hitting host function timeouts and causing engine instability.
+
+### Persistent Runtimes
+
+In persistent environments (like long-running Node.js containers, Docker, or VMs), function timeout constraints do not apply since the engine continuously runs in memory without needing to shut down.
+
+* **Recommended Range:** `100` to `200`
+* **Maximum:** Can be set to `Infinity` or omitted entirely.
+
+In persistent mode, higher tick limits maximize continuous throughput by reducing overhead between cycle resets.
+
+---
+
+<Callout type="warn">
+**Timeout Safety Warning:** Do not set `cycleTickLimit` higher than **20** per queue, especially when running multiple queues on serverless environments. High tick limits pin execution to the same serverless instance for longer durations, significantly escalating the risk of hitting host execution timeouts (such as AWS Lambda, Vercel, or Cloudflare Workers limits).
+</Callout>

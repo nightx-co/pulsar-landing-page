@@ -1,0 +1,103 @@
+---
+title: Tick
+description: Your first document
+---
+
+# Tick Service
+
+The Tick Service is the execution loop at the core of the Pulsar Engine. A **tick** represents a single execution cycle in which Pulsar evaluates its queues, determines the work that can be processed, pulls jobs from PGMQ, and dispatches them to their consumers.
+
+Once a tick finishes, the Tick Service schedules the next tick according to the configured timing and runtime constraints. This process continues until the current execution cycle reaches its configured limits or the runtime can no longer continue execution.
+
+## What a Tick Does
+
+A tick is responsible for executing the sequence of actions required to process work through the engine.
+
+At a high level, each tick:
+
+1. Evaluates the configured queues.
+2. Determines how much work each queue can process.
+3. Pulls the available jobs from PGMQ.
+4. Dispatches the jobs to the configured consumers.
+5. Updates the relevant execution state.
+6. Determines when the next tick should execute.
+
+The Tick Service coordinates these operations. It does not itself define the behavior of every subsystem involved in processing a job.
+
+## Tick Timing
+
+The timing between ticks is controlled by the queue's configured timing profile and the runtime in which Pulsar is executing.
+
+This allows different queues to operate at different execution cadences within the same Pulsar Engine instance.
+
+For example, a queue configured for a fast execution cadence may repeatedly execute its ticks at a short interval, while another queue can operate at a slower cadence when its workload does not require frequent polling.
+
+The timing system is therefore responsible for determining **when** the next tick should happen, while the Tick Service is responsible for executing **what happens during that tick**.
+
+## Tick Limits
+
+Ticks are bounded by execution limits at both the queue and engine levels.
+
+A queue can define a `cycleTickLimit` that determines how many ticks that queue can execute during the current engine execution cycle. The engine can also define a global `cycleTickLimit` that limits the total number of ticks executed across all queues.
+
+These limits are particularly important in serverless environments, where an execution environment has a finite execution window.
+
+When an applicable limit is reached, Pulsar stops scheduling additional ticks for the current execution cycle. The engine can then start another execution cycle according to its runtime and self-invocation configuration.
+
+## Runtime Awareness
+
+The Tick Service does not assume that Pulsar is running inside a single type of runtime.
+
+Pulsar can operate in isolate-based serverless runtimes, serverless container environments, and persistent runtimes.
+
+The Tick Service adapts its execution behavior to the runtime in which it is running.
+
+For example, an isolate-based runtime has a limited execution window. Pulsar can track the remaining runtime available to the current execution cycle and use that information when determining whether additional ticks can safely execute.
+
+A persistent runtime does not have the same short execution window, allowing the Tick Service to continue scheduling ticks as long as the process remains active.
+
+## Tick and Queue Processing
+
+A tick does not belong to a single queue.
+
+A Pulsar Engine can contain multiple queues, and the Tick Service coordinates their execution according to the engine's configuration.
+
+Each queue can independently define properties such as its concurrency, job batch size, tick limit, timing profile, and consumer.
+
+The Tick Service combines these queue-level configurations with the engine-level limits when determining how each tick should execute.
+
+This means the same tick mechanism can process queues with completely different workloads and execution requirements.
+
+## Tick Execution Model
+
+The core execution model can be simplified to:
+
+```text
+Execute Tick
+    ↓
+Evaluate Queues
+    ↓
+Determine Work
+    ↓
+Pull Jobs
+    ↓
+Dispatch Jobs
+    ↓
+Update Execution State
+    ↓
+Schedule Next Tick
+    ↓
+Execute Tick Again
+```
+
+This loop is the fundamental execution mechanism of the Pulsar Engine.
+
+The individual systems involved in this process are documented separately in the Pulsar architecture documentation.
+
+## In Simple Terms
+
+A tick is one complete execution cycle of Pulsar.
+
+The Tick Service keeps the engine moving by repeatedly executing that cycle: determine what needs to run, pull the work, dispatch it, and schedule the next execution.
+
+Everything that controls **how much work can run**, **how frequently it should run**, and **how long the engine can continue running** ultimately contributes to how the Tick Service executes its next tick.

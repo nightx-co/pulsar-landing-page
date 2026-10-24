@@ -1,0 +1,93 @@
+---
+title: Introduction
+description: Learn what Pulsar is, how it scales, and how it provides runtime-aware queue processing across serverless and persistent platforms.
+---
+
+# What is Pulsar?
+
+**Pulsar** is a runtime-flexible **job orchestration and messaging pooler engine for PGMQ**.
+
+Pulsar is **not a messaging queue by itself**. It uses **PostgreSQL Message Queue (PGMQ)** as its underlying queue system and provides the execution layer that continuously manages how those queues are processed.
+
+PGMQ is responsible for storing and managing the messages. Pulsar is responsible for operating the workers around those queues — deciding when queues should be processed, how much work can be handled, how jobs are dispatched, and how processing continues across different runtime environments.
+
+Pulsar uses PostgreSQL and its database-side functions, triggers, and related mechanisms to coordinate queue processing with PGMQ.
+
+This allows developers to use PGMQ without having to build the entire queue-processing lifecycle themselves.
+
+<Cards>
+  <Card title="Quickstart" href="/docs/getting-started/quickstart">
+    Install Pulsar and run your first queue.
+  </Card>
+
+  <Card title="Deployment" href="/docs/deployments/overview">
+    Deploy Pulsar across Vercel, AWS Lambda, Supabase, Cloudflare, and more.
+  </Card>
+
+  <Card title="Runtimes" href="/docs/runtimes/overview">
+    Choose between serverless and persistent execution modes.
+  </Card>
+</Cards>
+
+## Features
+
+Pulsar sits above PGMQ as the **processing and orchestration layer**, providing an enterprise-grade feature set out of the box:
+
+- **Per-Queue & Pooler Configuration:** Fine-tune concurrency, execution intervals, batch sizes, and dispatching strategies independently for each individual queue.
+- **Integrations & Ecosystem Support:** Effortlessly dispatch jobs to HTTP endpoints, custom async handlers, or stream data into tools like Apache Kafka, NATS, and external message brokers.
+- **Multi-Runtime Support:** Designed to run seamlessly across V8 isolates, edge functions, serverless environments, or persistent long-running servers.
+- **Reliable Engine Processing:** Built-in distributed execution locks, automatic retry mechanisms, failure recovery, and safe lifecycle management prevent race conditions and duplicate processing.
+- **Elastic Scaling:** Scales dynamically based on queue load, utilizing interval-driven or event-driven triggers to activate workers on demand without wasting resources.
+- **Deep Customization:** Tailor every layer of the processing engine—from execution hooks and payload transformations to specialized queue routing and event triggers.
+- **100% Open Source:** Fully transparent, community-driven, and free from vendor lock-in.
+
+Pulsar therefore does not replace PGMQ. **It operates PGMQ.**
+
+## Performance & Efficiency
+
+Pulsar is engineered for low-latency job dispatch and lightweight database overhead:
+
+- **Optimized Database Queries:** Batched message claims and efficient state transitions minimize round-trips to keep PostgreSQL load negligible.
+- **Sub-Millisecond Lock Coordination:** Uses database-level advisory locking to coordinate processing across workers with zero lock-contention latency.
+- **Minimal Footprint:** Optimized memory utilization makes Pulsar fast enough for cold-starting V8 edge isolates while maintaining high throughput in high-density container environments.
+
+## Deployment & Platform Support
+
+Pulsar is platform-agnostic and runtime-aware. It adapts its engine lifecycle to match the execution model of your target platform.
+
+You can deploy Pulsar across virtually any modern hosting service:
+
+- **Serverless & Edge Platforms:** Vercel, Netlify, AWS Lambda, Supabase Edge Functions, Cloudflare Workers / Functions
+- **Persistent Server Runtimes:** Node.js, Deno, Bun, Docker, VPS, or cloud instances (AWS EC2/ECS, Fly.io, Railway, GCP)
+
+Whether constrained by serverless execution limits or running continuously on dedicated servers, Pulsar handles execution boundaries safely without sacrificing message guarantees.
+
+## Why Pulsar?
+
+PGMQ provides the queue.
+
+Your application provides the business logic.
+
+**Pulsar connects the two.**
+
+It eliminates the complex boilerplate required to run production queues in modern architectures. By handling polling, event activation, concurrency coordination, HTTP/async dispatching, distributed locking, and platform adaptation automatically, Pulsar gives you an enterprise job engine on top of your existing PostgreSQL database.
+
+## Next steps
+
+<Cards>
+  <Card title="Install Pulsar" href="/docs/getting-started/installation">
+    Install the SDK and review its requirements.
+  </Card>
+
+  <Card title="Run your first queue" href="/docs/getting-started/quickstart">
+    Create a queue configuration and start processing jobs.
+  </Card>
+
+  <Card title="Deployments" href="/docs/deployments/overview">
+    Learn how to deploy on Vercel, AWS Lambda, Supabase, Cloudflare, and more.
+  </Card>
+
+  <Card title="Choose a runtime" href="/docs/runtimes/overview">
+    Deploy Pulsar in a serverless or persistent environment.
+  </Card>
+</Cards>

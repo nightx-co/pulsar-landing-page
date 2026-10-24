@@ -1,0 +1,64 @@
+---
+title: Tick Concurrency
+description: Configure the execution strategy for dispatching tick cycles across target queues.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The `tickConcurrency` property dictates whether the Pulsar engine evaluates and triggers tick cycles across multiple configured queues sequentially (one by one) or in parallel (simultaneously).
+
+## Usage
+
+Pass `tickConcurrency` inside the `engine` configuration object:
+
+```ts
+const engine = new Pulsar({
+  runtime: PulsarRuntime.PERSISTENT,
+  engine: {
+    tickConcurrency: "sequential", // [!code highlight]
+  },
+});
+```
+
+---
+
+## Configuration Options
+
+### 1. `sequential` (Default)
+
+Processes queue ticks strictly one after another in serial order.
+
+<Mermaid
+  chart="
+graph LR;
+  A[Queue A Tick] -->|await completion| B[Queue B Tick];
+  B -->|await completion| C[Queue C Tick];
+"
+/>
+
+- **Behavior:** Executes a single queue tick cycle at a time.
+- **Pros:** CPU and memory safe. Prevents sudden spike loads on database connections and JS runtime memory.
+- **Cons:** Takes longer total clock time to complete a single tick cycle across all queues.
+
+### 2. `parallel`
+
+Dispatches tick evaluations for all configured queues at the exact same moment via `Promise.allSettled`.
+
+<Mermaid
+  chart="
+graph TD;
+  Engine[Engine Tick] --> QueueA[Queue A Tick];
+  Engine --> QueueB[Queue B Tick];
+  Engine --> QueueC[Queue C Tick];
+"
+/>
+
+- **Behavior:** Dispatches tick evaluations concurrently across all target queues.
+- **Pros:** Dramatically lowers cycle latency and maximizes total job processing throughput.
+- **Cons:** Higher resource demand. Creates concurrent CPU spikes, transient memory allocations, and heavier concurrent database query bursts.
+
+---
+
+<Callout type="info">
+**Performance Tip:** In environments with strict CPU allocations or tight database connection pool limits, use `sequential` to prevent resource starvation. In high-capacity worker environments prioritizing low latency across many queues, use `parallel`.
+</Callout>

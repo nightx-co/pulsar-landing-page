@@ -1,0 +1,112 @@
+---
+title: Engine Lifecycle
+description: How the Pulsar Engine manages execution loops, time budgets, and self-invocations across runtimes.
+---
+
+The **Engine Lifecycle** describes how a Pulsar Engine initializes, dispatches queue cycles, manages internal budgets, and gracefully transitions between execution loops or self-invocations.
+
+Because Pulsar is designed to operate seamlessly across persistent workers, serverless functions, and V8 isolate runtimes, its lifecycle adapts dynamically to the execution boundaries of each environment.
+
+---
+
+## The Core Concept
+
+At its foundation, the Engine Lifecycle boils down to one fundamental principle: **how Pulsar maximizes continuous job throughput while respecting runtime time limits and execution budgets.**
+
+Three key mechanics govern when an engine instance continues running, completes its run, or triggers a self-invocation restart:
+
+1. **The Internal Clock Subsystem:** Tracks execution time remaining before host function timeouts.
+2. **Tick Cycle Limits:** Controls work quanta per queue and per engine instance.
+3. **Runtime Execution Model:** Determines whether execution runs indefinitely or requires self-triggering restarts.
+
+---
+
+## Starting the Engine
+
+When a Pulsar instance initializes, it bootstraps configured queues, connects storage drivers, builds runtime isolation contexts, and starts internal engine services.
+
+Once initialization finishes, the engine spins up its **Tick Service** and begins dispatching work across candidate queues based on your `tickConcurrency` strategy.
+
+---
+
+## The Internal Clock Subsystem
+
+Serverless and Edge environments impose strict execution timeout boundaries (e.g., AWS Lambda, Vercel Edge, Cloudflare Workers). To prevent abrupt host terminations mid-job, Pulsar includes a dedicated **Clock Subsystem**.
+
+The Clock is not a simple JavaScript `Date` wrapper. It maintains high-precision internal timers and registries that monitor both elapsed time and remaining execution margin.
+
+Before starting a new tick, the Tick Service queries the Clock:
+
+* **Sufficient Time Remaining:** The engine proceeds with processing the next tick.
+* **Approaching Time Ceiling:** The engine safely halts normal tick dispatches *before* the host platform terminates the instance. It cleanly flushes active states and transitions directly into the self-invocation flow.
+
+---
+
+## How Tick Cycle Limits Shape the Lifecycle
+
+Execution time is not the only boundary that triggers a lifecycle transition. The engine also enforces strict work budgets via `cycleTickLimit`.
+
+Even if the internal Clock indicates ample time remaining in the serverless function window, **reaching tick cycle limits immediately terminates the current engine run and triggers a self-invocation.**
+
+### 1. Per-Queue `cycleTickLimit`
+Each configured queue maintains a tick budget (for example, a default limit of `10` ticks). Once a queue exhausts its allocated tick count for the current cycle, the engine marks that queue's budget as complete for the run.
+
+### 2. Engine-Level `cycleTickLimit`
+The engine maintains a global cumulative tick ceiling across all active queues.
+
+If you have 5 configured queues with a global or combined queue limit of 10 ticks per run, as soon as the total cumulative ticks executed across all queues reaches `10`, the engine considers the execution budget fully spent.
+
+Regardless of how many seconds remain on the serverless host timer, the engine immediately stops processing, terminates the active cycle, and dispatches a self-invocation to start a clean, fresh execution window.
+
+---
+
+## Runtime-Specific Lifecycle Behaviors
+
+### Serverless VM & Container Lifecycle
+
+In serverless container environments (like AWS Lambda or standard cloud functions), the engine treats each execution as a temporary worker run.
+
+The engine processes ticks until **either**:
+- The internal Clock detects that host function timeout is approaching, **OR**
+- Active queues reach their configured `cycleTickLimit`.
+
+When either condition is met, Pulsar safely shuts down the current tick loop and uses the configured `selfInvocationMethod` (such as `auto_using_pgnet` or custom `manual` triggers) to spawn the next execution run.
+
+```text
+Start Run → Dispatch Ticks → Limit or Timeout Approaching → Self-Invoke → New Execution
+```
+
+### V8 Isolate Lifecycle
+
+V8 Isolate platforms (such as Cloudflare Workers or Edge Isolates) introduce two distinct runtime boundaries:
+
+1. **Invocation Lifetime:** The short execution window allowed for an individual HTTP handler call.
+2. **Isolate Lifetime:** The total lifetime of the warm underlying V8 isolate instance.
+
+Pulsar tracks both levels. The internal Clock manages the invocation boundary, while isolate-level state tracks total isolate aging.
+
+When `cycleTickLimit` is reached or isolate health thresholds near their safety margin, Pulsar halts processing and enters its restart flow. The engine intentionally delays self-invocation slightly so the host platform can recycle the expiring isolate, ensuring the next cycle lands on a fresh execution environment.
+
+### Persistent Runtime Lifecycle
+
+In long-running Node.js/Deno processes, Docker containers, or VPS instances, host timeouts do not exist.
+
+The lifecycle in persistent mode operates as a continuous, indefinite loop:
+
+```text
+Start → Process Queues → Continue Ticking → Process Queues → Continue Ticking...
+```
+
+Because host timeouts are absent:
+* The internal Clock does not trigger self-invocations.
+* `cycleTickLimit` can be set significantly higher (or omitted), keeping the Tick Service active indefinitely in memory.
+* Self-invocations are bypassed entirely; the process remains warm and active, polling or reacting to queue events continuously.
+
+---
+
+## Queue Completion & Shutdown
+
+When configured queues have no remaining jobs and all tick cycles evaluate to idle, the engine lifecycle transitions to a completed state for that run:
+
+* **In Persistent Mode:** The engine remains warm in memory, entering an idle polling or event-driven state until new jobs arrive.
+* **In Serverless Mode:** The engine completes its execution cycle cleanly without issuing unnecessary self-invocations, allowing the host instance to terminate until new work arrives or scheduled triggers resume.

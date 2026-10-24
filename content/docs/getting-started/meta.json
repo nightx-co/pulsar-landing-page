@@ -1,0 +1,14 @@
+{
+  "title": "Getting Started",
+  "description": "Install Pulsar and run your first queue.",
+  "root": true,
+  "pages": [
+    "introduction",
+    "installation",
+    "requirements",
+    "quickstart",
+    "first-queue",
+    "configuration-overview",
+    "dang"
+  ]
+}

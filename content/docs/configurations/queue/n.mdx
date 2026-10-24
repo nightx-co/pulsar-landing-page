@@ -1,0 +1,43 @@
+---
+title: N
+description: Configure the number of jobs fetched per worker during a queue tick.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The `n` property specifies the batch size—the exact number of jobs that each individual worker pulls from PGMQ during a single tick loop execution.
+
+While `concurrency` determines how many parallel workers run, `n` controls how many jobs each worker claims and processes in a single batch.
+
+## Usage
+
+Pass `n` inside the `createQueue` configuration object:
+
+```ts
+export const Queue3 = createQueue({
+  queue: "q_3",
+  type: "STANDARD",
+  concurrency: 10,
+  cycleTickLimit: 10,
+  maxJobsPerTick: 1000,
+  n: 10, // [!code highlight]
+  // ... other queue options
+});
+```
+
+---
+
+## How It Works
+
+During every tick, the queue calculates the total potential job fetch payload using:
+
+```text
+Total Jobs Requested = Concurrency × n
+```
+
+- **Example:** If `concurrency` is set to `10` and `n` is set to `10`, the engine will attempt to pull up to `100` jobs (`10 workers × 10 jobs/worker`) from PGMQ in that tick.
+- **Throttling Interaction:** If the calculated `Concurrency × n` exceeds `maxJobsPerTick`, the engine scales down the actual batch to satisfy your global batch ceiling.
+
+<Callout type="info">
+Higher values for `n` increase batch processing throughput per database query, but larger batches take longer for workers to process and require more memory.
+</Callout>

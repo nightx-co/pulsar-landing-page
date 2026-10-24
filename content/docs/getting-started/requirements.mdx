@@ -1,0 +1,63 @@
+---
+title: Requirements
+description: Install the Pulsar SDK and review the runtime and database requirements.
+---
+
+import { Cards, Card } from 'fumadocs-ui/components/card';
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Server, Cpu, Flame, Zap, Cloud, Box } from 'lucide-react';
+
+Before using Pulsar, make sure your application runtime and PostgreSQL database meet the following requirements.
+
+### Supported Runtimes
+
+Pulsar supports the following JavaScript runtimes and execution environments:
+
+<Cards className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+  <Card
+    icon={<Server className="w-5 h-5 text-green-500" />}
+    title="Node.js"
+    description="Full support for long-running servers and background processing."
+  />
+  <Card
+    icon={<Cpu className="w-5 h-5 text-blue-400" />}
+    title="Deno"
+    description="Native TypeScript execution environment with modern APIs."
+  />
+  <Card
+    icon={<Flame className="w-5 h-5 text-amber-500" />}
+    title="Bun"
+    description="High-performance JavaScript runtime for fast startup cycles."
+  />
+  <Card
+    icon={<Zap className="w-5 h-5 text-orange-400" />}
+    title="AWS Lambda"
+    description="Serverless execution with recommended >2s CPU timeouts."
+  />
+  <Card
+    icon={<Cloud className="w-5 h-5 text-emerald-400" />}
+    title="Supabase Edge"
+    description="Distributed edge function runtime for database-adjacent workers."
+  />
+  <Card
+    icon={<Box className="w-5 h-5 text-purple-400" />}
+    title="Containers"
+    description="Docker, Kubernetes, and persistent serverless platforms."
+  />
+</Cards>
+
+For serverless environments, the runtime must provide enough CPU execution time for the Pulsar engine to initialize and perform its processing cycle. A **minimum CPU execution time of 2 seconds** is recommended.
+
+<Callout title="Serverless Execution Limits" type="warn">
+  Serverless platforms with shorter CPU execution limits may not provide enough execution time for Pulsar to operate reliably.
+</Callout>
+
+### Database Requirements
+
+Pulsar requires a PostgreSQL database with the following extensions enabled:
+
+* **pgmq** — Provides the underlying message queues.
+* **pg_cron** — Enables scheduled queue processing and engine execution (must be version **> 1.6.4**).
+* **pg_net** — Provides HTTP capabilities used by the processing engine.
+
+Your database must satisfy all of these requirements before Pulsar can be initialized.

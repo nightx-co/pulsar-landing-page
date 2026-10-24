@@ -1,0 +1,176 @@
+---
+title: Storage
+description: Your first document
+---
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Card, Cards } from 'fumadocs-ui/components/card';
+import { Database, Zap, Layers, Cpu, Server, ShieldAlert } from 'lucide-react';
+
+**Pulsar Unified Storage** manages low-latency memory stores (Redis) and relational PostgreSQL database instances under a single interface.
+
+By decoupling storage strategies from engine execution logic, Pulsar lets you dynamically balance throughput speed and data durability depending on your target runtime environment (Serverless, V8 Isolates, or Persistent Node.js/Deno processes).
+
+<Callout type="info">
+  In `AUTO` mode, Pulsar automatically delegates high-frequency queue operations to **Redis** if a cache driver is supplied, falling back to fast **PostgreSQL Unlogged Tables** when Redis is omitted.
+</Callout>
+
+---
+
+## Setup & Code Example
+
+<Tabs items={['Complete Setup', 'TCP & REST Redis Drivers', 'Engine Mounting']}>
+  <Tab value="Complete Setup">
+    ```typescript title="pulsar-storage.ts"
+    import { Pulsar, PulsarRuntime, PulsarUnifiedStorage } from '@pulsar/core';
+    import { RedisDriver } from '@pulsar/redis';
+    import { PostgresDriver } from '@pulsar/postgres';
+
+    // 1. Configure the in-memory cache layer (Redis via TCP or HTTP)
+    const cacheStorage = new RedisDriver({
+      protocol: "tcp",
+      keyPrefix: "pulsar",
+      connectionString: "127.0.0.1:6379",
+    });
+
+    // 2. Configure the persistent database layer (PostgreSQL)
+    const postgresDriver = new PostgresDriver({
+      connectionString: "postgresql://postgres:password@localhost:5432/postgres",
+      unloggedTableSchema: "pulsar_engine",
+    });
+
+    // 3. Initialize the Unified Storage orchestrator
+    const unifiedStorage = new PulsarUnifiedStorage({
+      cache: cacheStorage,
+      db: postgresDriver,
+      strategy: "AUTO",
+    });
+
+    // 4. Mount Unified Storage onto the Pulsar Engine instance
+    const engine = new Pulsar({
+      runtime: PulsarRuntime.PERSISTENT,
+      storage: unifiedStorage,
+    });
+    ```
+  </Tab>
+
+  <Tab value="TCP & REST Redis Drivers">
+    ```typescript title="storage-drivers.ts"
+    import { RedisDriver } from '@pulsar/redis';
+    import { PostgresDriver } from '@pulsar/postgres';
+
+    // TCP Redis Cache Driver (For Long-Running / Persistent Runtimes)
+    const tcpCache = new RedisDriver({
+      protocol: "tcp",
+      keyPrefix: "pulsar",
+      connectionString: "redis://:password@127.0.0.1:6379",
+      db: 0,
+      connectTimeout: 5000,
+    });
+
+    // HTTP / REST Redis Cache Driver (For Serverless & Edge Isolates like Upstash)
+    const restCache = new RedisDriver({
+      protocol: "http",
+      keyPrefix: "pulsar",
+      url: "[https://your-upstash-db.upstash.io](https://your-upstash-db.upstash.io)",
+      token: "AXXXAXXXXXXXXXXXXXXX...",
+    });
+
+    // Postgres Persistent Driver
+    const postgresDriver = new PostgresDriver({
+      connectionString: "postgresql://postgres:password@localhost:5432/postgres",
+      unloggedTableSchema: "pulsar_engine",
+      maxConnections: 20,
+    });
+    ```
+  </Tab>
+
+  <Tab value="Engine Mounting">
+    ```typescript title="engine-init.ts"
+    import { Pulsar, PulsarRuntime } from '@pulsar/core';
+
+    const engine = new Pulsar({
+      runtime: PulsarRuntime.PERSISTENT,
+      storage: unifiedStorage,
+    });
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## API Reference & Options
+
+### `PulsarUnifiedStorage` Options
+
+`PulsarUnifiedStorage` coordinates connection lifecycles, health checks, and operation dispatch across cache and database drivers.
+
+| Parameter | Type | Required? | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `db` | `PostgresDriver` | **Yes** | — | Instance of the PostgreSQL storage driver for relational state, lock coordination, and fallback queueing. |
+| `cache` | `RedisDriver` | No | `undefined` | Optional instance of `RedisDriver`. Used as the primary operational store when `strategy` includes Redis. |
+| `strategy` | `StorageStrategy` | No | `"AUTO"` | Determines how job operations and state syncing are split between `cache` and `db`. |
+
+---
+
+### `RedisDriver` Configuration
+
+The `RedisDriver` supports both stateful **TCP connections** (ideal for EC2, Docker, or Kubernetes) and stateless **HTTP/REST requests** (optimized for Cloudflare Workers, Supabase Edge, and serverless functions).
+
+#### 1. TCP Protocol Options (`protocol: "tcp"`)
+
+| Parameter | Type | Required? | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `protocol` | `"tcp"` | **Yes** | — | Explicitly selects TCP socket transport. |
+| `connectionString` | `string` | **Yes** | — | Redis URI formatted as `redis://[user]:[password]@[host]:[port]`. |
+| `keyPrefix` | `string` | No | `"pulsar"` | Namespace prefix added to all Redis keys to isolate tenant or environment queues. |
+
+#### 2. HTTP / REST Protocol Options (`protocol: "http"`)
+
+| Parameter | Type | Required? | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `protocol` | `"http"` | **Yes** | — | Explicitly selects stateless HTTP/REST requests (e.g., Upstash Redis API). |
+| `url` | `string` | **Yes** | — | The HTTP endpoint URL for the Redis REST REST API provider. |
+| `token` | `string` | **Yes** | — | Bearer authentication token for authorization. |
+| `keyPrefix` | `string` | No | `"pulsar"` | Namespace prefix added to all Redis keys. |
+
+---
+
+### `PostgresDriver` Configuration
+
+The `PostgresDriver` interfaces directly with PostgreSQL to manage relational engine state, advisory locks, and PGMQ queues.
+
+| Parameter | Type | Required? | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `connectionString` | `string` | **Yes** | — | PostgreSQL connection URI (`postgresql://user:pass@host:5432/dbname`). |
+| `unloggedTableSchema` | `string` | No | `"pulsar_engine"` | Database schema used to manage high-speed unlogged volatile queue tables. |
+| `maxConnections` | `number` | No | `10` | Maximum pool size for concurrent database connections. |
+| `idleTimeoutMs` | `number` | No | `30000` | Time in milliseconds an idle connection remains open before being released. |
+| `ssl` | `boolean \| SSLOptions` | No | `false` | Enable or configure TLS/SSL encryption for cloud providers (e.g., Supabase, Neon, AWS RDS). |
+
+## Strategy Comparison
+
+| Strategy | Primary Queue Store | Engine Locks & Metadata | Ideal Use Case | Extra Infra Required? |
+| :--- | :--- | :--- | :--- | :--- |
+| **`AUTO`** | Redis *(if present)* / PG Unlogged | PostgreSQL | Standard default for mixed serverless and server environments. | ❌ Optional |
+| **`REDIS_CACHE`** | Redis RAM Buffer | PostgreSQL | Ultra-high throughput microservices requiring sub-millisecond dispatch. |  Yes (Redis) |
+| **`PG_UNLOGGED`** | PG Unlogged Tables | PostgreSQL | High-speed, single-database setups that want to avoid managing Redis. | ❌ No |
+
+---
+
+## Data Safety & Persistence Behavior
+
+<Callout type="warn">
+  **PostgreSQL Unlogged Tables (`PG_UNLOGGED`)** bypass write-ahead logging (WAL) for maximum write performance. While significantly faster than standard relational tables, data stored in unlogged tables is **volatile** and will be truncated by PostgreSQL during an unclean shutdown or database crash.
+</Callout>
+
+### Recommended Strategies by Environment
+
+1. **Serverless & Edge Isolates (Cloudflare Workers, Supabase Edge):**
+   Use `protocol: "http"` with `RedisDriver` and strategy `"AUTO"` or `"REDIS_CACHE"` to avoid connection pooling limits and TCP handshake latency.
+
+2. **Persistent Container Pools (Docker, ECS, Kubernetes):**
+   Use `protocol: "tcp"` with `RedisDriver` or rely on `"PG_UNLOGGED"` if you prefer keeping your entire queue stack inside a single PostgreSQL database.
+
+3. **Strict Durability Requirements:**
+   If message retention across database crashes is mandatory, combine standard PGMQ relational queues with `PG_UNLOGGED` fallback disabled.

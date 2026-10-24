@@ -1,0 +1,55 @@
+---
+title: Queue Concurrency
+description: Configure maximum parallel worker dispatches for an individual queue.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The `concurrency` property defines the maximum number of concurrent workers or job dispatches allowed for a specific queue at any given millisecond.
+
+While `maxGlobalConcurrency` enforces an engine-wide ceiling across all queues, the per-queue `concurrency` setting determines how aggressively an individual queue can scale its worker dispatches.
+
+## Usage
+
+Pass `concurrency` inside the `createQueue` configuration object:
+
+```ts
+export const Queue3 = createQueue({
+  queue: "q_3",
+  type: "STANDARD",
+  concurrency: 10, // [!code highlight]
+  cycleTickLimit: 10,
+  maxJobsPerTick: 1000,
+  // ... other queue options
+});
+```
+
+---
+
+## Configuration Reference
+
+- **Type:** `number`
+- **Scope:** Per-queue execution
+
+---
+
+## Interaction with Global Concurrency
+
+A queue's effective concurrency can never exceed its configured `concurrency` value, but it may be scaled down dynamically by the engine depending on global activity:
+
+- **Unconstrained Execution:** If global capacity is available, the queue spawns up to its configured `concurrency` value (e.g., up to 10 parallel workers).
+- **Engine Throttling:** If total demand across all active queues exceeds `maxGlobalConcurrency`, the engine scales down active dispatches proportionally or queued on a first-come, first-served basis across active worker slots.
+
+<Mermaid
+  chart="
+graph LR;
+  Config[Queue Config: concurrency = 10] --> Demand[Queue Demand: 10 Jobs];
+  Demand --> EngineCheck{Engine Check};
+  EngineCheck -->|Global Slots Available| Max[Dispatches 10 Concurrent Workers];
+  EngineCheck -->|Global Cap Reached| Scaled[Throttled to Available Engine Slots];
+"
+/>
+
+<Callout type="info">
+Tune `concurrency` based on the workload characteristics of individual queues. For heavy CPU/memory or rate-limited API tasks, set a lower `concurrency`. For lightweight, high-throughput tasks, allocate a higher value.
+</Callout>

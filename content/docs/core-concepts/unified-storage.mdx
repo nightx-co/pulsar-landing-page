@@ -1,0 +1,81 @@
+---
+title: Unified Storage System (USS)
+description: Understand how Pulsar uses PostgreSQL and optionally Redis for operational and persistent storage.
+---
+
+The **Unified Storage System (USS)** is Pulsar's storage abstraction layer for engine state and storage operations.
+
+Pulsar can use **Redis as an optional operational storage layer** alongside PostgreSQL. Redis is not required. When Redis is not configured, Pulsar performs those same operational operations through PostgreSQL using the `unlogged` table.
+
+The goal of USS is to give the Pulsar Engine a single storage interface while allowing the developer to choose whether Redis should be available for high-frequency engine operations.
+
+## PostgreSQL and Redis
+
+Pulsar has two possible storage paths for its engine operations.
+
+**With Redis:**
+
+Pulsar uses Redis for high-frequency operational state such as worker registration, worker deregistration, spawning, job calculation and resolution, locks, and execution coordination.
+
+PostgreSQL remains the persistent storage layer.
+
+**Without Redis:**
+
+Pulsar falls back to PostgreSQL for those same operational operations.
+
+The operational state is stored in the PostgreSQL `unlogged` table rather than Redis.
+
+This means Redis is an optimization, not a dependency.
+
+## The `unlogged` Table
+
+The PostgreSQL `unlogged` table provides the database-backed fallback for operational state when Redis is not configured.
+
+Operations such as worker registration, deregistration, lock execution, spawning, and other engine coordination can therefore continue through PostgreSQL.
+
+This also means that removing Redis does not require a different engine architecture. The same Pulsar subsystems continue using the Unified Storage layer, while the storage driver determines where the operation is performed.
+
+## Unified Storage Driver
+
+Pulsar's internal systems communicate with the **Unified Storage Driver** rather than directly depending on Redis or PostgreSQL.
+
+The driver uses the configured storage capabilities to determine how an operation should be handled.
+
+For example:
+
+- Redis configured → operational operations use Redis.
+- Redis not configured → operational operations use PostgreSQL through the `unlogged` table.
+
+This keeps storage selection separate from the engine's processing logic.
+
+## Persistent Storage
+
+PostgreSQL remains the persistent storage foundation of Pulsar.
+
+The Redis layer is intended for operational performance and reducing the amount of high-frequency engine activity that needs to be handled directly by PostgreSQL.
+
+The distinction is therefore:
+
+**PostgreSQL → Persistent storage and PostgreSQL-backed operational fallback**
+
+**Redis → Optional high-performance operational storage**
+
+## Optional Redis
+
+Redis can be enabled when the workload benefits from faster operational storage and reduced PostgreSQL load.
+
+If Redis is not provided, **nothing in the Pulsar Engine breaks**. The Unified Storage Driver falls back to PostgreSQL and performs the corresponding operations through the `unlogged` table.
+
+This allows Pulsar to run with PostgreSQL alone while still providing an optional path for higher-performance operational workloads.
+
+## The Core Idea
+
+The simplest way to think about USS is:
+
+> **USS gives Pulsar one storage interface while allowing operational state to run through Redis or PostgreSQL.**
+
+Redis provides the optional high-performance path.
+
+PostgreSQL provides the persistent foundation and the fallback operational path through the `unlogged` table.
+
+The choice of whether to enable Redis belongs entirely to the developer.

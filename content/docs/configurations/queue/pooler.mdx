@@ -1,0 +1,58 @@
+---
+title: Pooler
+description: Configure how the queue fetches and listens for incoming work from storage.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The `pooler` property dictates the strategy a queue uses to discover and retrieve pending jobs from storage.
+
+Pulsar supports two distinct pooling modes: **Interval-Driven Pooling (IDP)** for continuous, time-paced processing, and **Event-Driven Pooling (EDP)** for immediate, event-triggered execution.
+
+## Usage
+
+Pass `pooler` inside the `createQueue` configuration object:
+
+```ts
+export const Queue3 = createQueue({
+  queue: "q_3",
+  type: "STANDARD",
+  pooler: "interval-driven-pooler", // [!code highlight]
+  // ... other queue options
+});
+```
+
+---
+
+## Configuration Options
+
+### 1. `Interval Driven Pooler` (IDP) — Default
+
+The engine polls storage at scheduled intervals dictated by the queue's `profile` settings.
+
+- **Best For:** Steady, high-volume, or predictable background workloads requiring continuous batch processing.
+- **Behavior:** Consistently polls the queue according to configured timing intervals (`activePollMs`, `idlePollMs`).
+- **Core Concept Reference:** Learn more about interval polling strategies in the [Interval-Driven Pooler Guide](/docs/core-concepts/interval-driven-pooler).
+
+### 2. `Event Driven Pooler` (EDP)
+
+The engine listens directly for storage events/notifications (such as Postgres `LISTEN/NOTIFY` or database triggers) and immediately dispatches workers when new jobs arrive.
+
+- **Best For:** Bursty or sporadic workloads where instant, low-latency execution is required while driving idle execution overhead down to zero.
+- **Behavior:** Remains dormant until triggered by an incoming event notification, eliminating unnecessary polling queries during idle periods.
+- **Core Concept Reference:** Learn more about event-based reactivity in the [Event-Driven Pooler Guide](/docs/core-concepts/event-driven-pooler).
+
+---
+
+## Comparison Matrix
+
+| Pooling Mode | Trigger Strategy | Idle Query Overhead | Pickup Latency | Ideal Use Case |
+| :--- | :--- | :--- | :--- | :--- |
+| interval-driven-pooler | Timed Interval Polling | Regular Low-Cost Polls | Predictable (Interval-bound) | Continuous / Batch Background Jobs |
+| event-driven-pooler | Storage Event Notifications | Zero Idle Polls | Near Instantaneous (< 10ms) | Real-time, Sporadic, or Interactive Tasks |
+
+<Callout type="info">
+For deep architectural breakdowns, performance comparisons, and setup considerations, refer to the dedicated **Core Concepts** guides for [Interval-Driven Pooling](/docs/core-concepts/interval-driven-pooler) and [Event-Driven Pooling](/docs/core-concepts/event-driven-pooler).
+</Callout>
+
+---

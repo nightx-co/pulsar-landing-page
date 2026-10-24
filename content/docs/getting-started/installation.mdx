@@ -1,0 +1,148 @@
+---
+title: Installation
+description: Install the Pulsar SDK via package managers, direct binary/tarball releases, or system curl commands.
+---
+
+import { Cards, Card } from 'fumadocs-ui/components/card';
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+import { Step, Steps } from 'fumadocs-ui/components/steps';
+import { Download, Terminal, Package, ShieldCheck } from 'lucide-react';
+
+# Installation
+
+Install the Pulsar SDK using your favorite package manager, download pre-built release archives directly from GitHub, or install using standard system CLI commands.
+
+---
+
+## Package Managers
+
+If you are using a Node.js or JavaScript runtime environment, install Pulsar directly from npm using your preferred package manager:
+
+<Tabs items={['npm', 'pnpm', 'yarn', 'bun']}>
+  <Tab value="npm">
+    ```bash
+    npm i pulsar
+    ```
+  </Tab>
+  <Tab value="pnpm">
+    ```bash
+    pnpm add pulsar
+    ```
+  </Tab>
+  <Tab value="yarn">
+    ```bash
+    yarn add pulsar
+    ```
+  </Tab>
+  <Tab value="bun">
+    ```bash
+    bun add pulsar
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Direct GitHub Tarball (.tgz)
+
+For offline environments, locked CI/CD pipelines, or custom runtime environments, install Pulsar directly using the compressed `.tgz` tarball asset attached to our GitHub releases:
+
+### Option A: Install Tarball via Package Manager
+
+Pass the GitHub release asset URL directly to your package manager:
+
+<Tabs items={['npm', 'pnpm', 'yarn', 'bun']}>
+  <Tab value="npm">
+    ```bash
+    npm install [https://github.com/your-org/pulsar/releases/download/v1.0.0/pulsar-1.0.0.tgz](https://github.com/your-org/pulsar/releases/download/v1.0.0/pulsar-1.0.0.tgz)
+    ```
+  </Tab>
+  <Tab value="pnpm">
+    ```bash
+    pnpm add [https://github.com/your-org/pulsar/releases/download/v1.0.0/pulsar-1.0.0.tgz](https://github.com/your-org/pulsar/releases/download/v1.0.0/pulsar-1.0.0.tgz)
+    ```
+  </Tab>
+  <Tab value="yarn">
+    ```bash
+    yarn add [https://github.com/your-org/pulsar/releases/download/v1.0.0/pulsar-1.0.0.tgz](https://github.com/your-org/pulsar/releases/download/v1.0.0/pulsar-1.0.0.tgz)
+    ```
+  </Tab>
+  <Tab value="bun">
+    ```bash
+    bun add [https://github.com/your-org/pulsar/releases/download/v1.0.0/pulsar-1.0.0.tgz](https://github.com/your-org/pulsar/releases/download/v1.0.0/pulsar-1.0.0.tgz)
+    ```
+  </Tab>
+</Tabs>
+
+### Option B: Download & Extract via Shell (`curl` / `wget`)
+
+If you are setting up standard Linux/macOS worker environments or Docker containers without npm, pull and extract the release manually using `curl` or `wget`:
+
+<Tabs items={['curl (Linux/macOS)', 'wget (Linux)', 'PowerShell (Windows)']}>
+  <Tab value="curl (Linux/macOS)">
+    ```bash
+    # Download tarball release
+    curl -L -O [https://github.com/your-org/pulsar/releases/download/v1.0.0/pulsar-1.0.0.tgz](https://github.com/your-org/pulsar/releases/download/v1.0.0/pulsar-1.0.0.tgz)
+
+    # Extract archive into project directory
+    mkdir -p ./pulsar && tar -xzf pulsar-1.0.0.tgz -C ./pulsar --strip-components=1
+    ```
+  </Tab>  <Tab value="wget (Linux)">
+    ```bash
+    # Download tarball release
+    wget [https://github.com/your-org/pulsar/releases/download/v1.0.0/pulsar-1.0.0.tgz](https://github.com/your-org/pulsar/releases/download/v1.0.0/pulsar-1.0.0.tgz)
+
+    # Extract archive into project directory
+    mkdir -p ./pulsar && tar -xzf pulsar-1.0.0.tgz -C ./pulsar --strip-components=1
+    ```
+  </Tab>
+  <Tab value="PowerShell (Windows)">
+    ```powershell
+    # Download tarball release
+    Invoke-WebRequest -Uri "[https://github.com/your-org/pulsar/releases/download/v1.0.0/pulsar-1.0.0.tgz](https://github.com/your-org/pulsar/releases/download/v1.0.0/pulsar-1.0.0.tgz)" -OutFile "pulsar-1.0.0.tgz"
+
+    # Extract archive
+    tar -xzf pulsar-1.0.0.tgz
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Verifying the Installation
+
+<Steps>
+  <Step>
+    ### Check CLI Version
+    Verify that Pulsar is properly registered in your PATH or project context:
+    ```bash
+    npx pulsar --version
+    ```
+  </Step>
+  <Step>
+    ### It should return
+    Verify that Pulsar is installed in your project
+    ```bash
+    ex, 1.0.0
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Next Steps
+
+<Cards>
+  <Card href="/docs/getting-started/quickstart" title="Quickstart">
+    Set up your database and run your first queue with Pulsar.
+  </Card>
+
+  <Card href="/docs/configuration/overview" title="Configuration">
+    Learn how to configure queues, concurrency, dispatching, and execution.
+  </Card>
+
+  <Card href="/docs/deployments/overview" title="Deployments">
+    Learn how to deploy Pulsar across serverless and persistent platforms.
+  </Card>
+</Cards>

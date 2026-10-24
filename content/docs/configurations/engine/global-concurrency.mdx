@@ -1,0 +1,70 @@
+---
+title: Global Concurrency
+description: Enforce a global engine-level cap on concurrent workers across all queues.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The `maxGlobalConcurrency` setting enforces an engine-level ceiling on the maximum number of worker threads/tasks processing jobs simultaneously across **all** configured queues.
+
+While each queue defines its own individual concurrency, `maxGlobalConcurrency` guarantees that the total combined concurrent workers running across your entire Pulsar engine instance never exceeds this limit.
+
+## Usage
+
+Pass `maxGlobalConcurrency` inside the `engine` configuration object:
+
+```ts
+const engine = new Pulsar({
+  runtime: PulsarRuntime.PERSISTENT,
+  engine: {
+    maxGlobalConcurrency: 100, // [!code highlight]
+  },
+});
+```
+
+---
+
+## How It Works
+
+### 1. Hard Slot Limit & Queuing
+If your aggregate queue concurrencies exceed `maxGlobalConcurrency`, available global worker slots are claimed on a first-come, first-served basis:
+
+* Suppose you have **10 queues**, each configured with a queue concurrency of **10** (Total potential = **100 workers**).
+* With `maxGlobalConcurrency: 100`, all 100 slots are fully booked.
+* If an 11th queue attempts to spawn even a single worker, it will be held until an active slot frees up from one of the other queues.
+
+### 2. Proportional Scaling / Dynamic Throttling
+When total demand across active queues surpasses the global limit, the engine dynamically constrains per-queue dispatches:
+
+* Suppose you have **10 queues**, each configured with a queue concurrency of **100** (Total potential = **1,000 workers**).
+* If `maxGlobalConcurrency` is capped at **100**, the engine balances execution so each queue scales down to a maximum of **10 active workers** at a time, keeping the global sum strictly within the **100** worker ceiling.
+
+<Mermaid
+  chart="
+graph TD;
+  subgraph Q [Queue Level Concurrency Demand: 1,000 Workers];
+    Q1[Queue 1: 100 Req];
+    Q2[Queue 2: 100 Req];
+    Q3[Queues 3-10: 800 Req];
+  end
+  
+  Engine[maxGlobalConcurrency: 100];
+  
+  subgraph Dispatch [Engine Active Workers: 100 Total];
+    W1[Queue 1: 10 Active Workers];
+    W2[Queue 2: 10 Active Workers];
+    W3[Queues 3-10: 80 Active Workers];
+  end
+  
+  Q1 --> Engine;
+  Q2 --> Engine;
+  Q3 --> Engine;
+  Engine --> W1;
+  Engine --> W2;
+  Engine --> W3;
+"
+/>
+
+<Callout type="info">
+`maxGlobalConcurrency` is key for protecting downstream infrastructure—such as database connection pools, third-party API rate limits, or server CPU/memory constraints—from spike loads across multiple queues.
+</Callout>

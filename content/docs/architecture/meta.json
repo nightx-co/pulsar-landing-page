@@ -1,0 +1,10 @@
+{
+  "title": "Architecture",
+  "description": "Understand how Pulsar polls, locks, dispatches, and recovers work.",
+  "root": true,
+  "pages": [
+    "overview",
+    "tick",
+    "unified-storage"
+  ]
+}

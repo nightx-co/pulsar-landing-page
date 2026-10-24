@@ -1,0 +1,543 @@
+---
+title: Tick
+description: Your first document
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+import { Step, Steps } from 'fumadocs-ui/components/steps';
+import { Card, Cards } from 'fumadocs-ui/components/card';
+
+# Tick Service
+
+The Tick Service is the execution loop of the Pulsar Engine. It is responsible for repeatedly executing the configured sequence of actions required to pull and dispatch jobs.
+
+At a high level, each tick performs the following operations:
+
+1. Determine which queues are eligible to execute.
+2. Pull jobs from PGMQ according to the queue configuration.
+3. Calculate the number of jobs that can be pulled for the current tick.
+4. Dispatch the jobs to the configured consumers.
+5. Track the current tick and execution state.
+6. Communicate with the engine clock system to determine when the next tick should execute.
+7. Continue until the configured tick limits or runtime constraints require the current execution cycle to stop.
+
+The Tick Service itself does not define how a queue obtains its jobs or how a consumer processes them. Instead, it coordinates the execution of these operations according to the engine and queue configuration.
+
+## Queue Configuration
+
+Each Pulsar queue has its own configuration that determines how the Tick Service processes that queue.
+
+```ts
+export const Queue1 = createQueue({
+    queue: "q_1",
+    type: "STANDER",
+    concurrency: 10,
+    cycleTickLimit: 10,
+    maxJobsPerTick: 1000,
+    n: 10,
+    sleep: 10,
+
+    profile: {
+        activePollMs: 100,
+        backoffPollMs: 100,
+        maxTimerMs: 500,
+        idlePollMs: 100
+    },
+
+    pooler: "interval-driven-pooler",
+
+    consumer: {
+        type: "http",
+        url: "http://localhost:9999/test-f",
+        headers: {
+            "Authorization": `Bearer SUPABASE_ANON_KEY`
+        }
+    }
+});
+````
+
+The important queue-level options for the Tick Service are:
+
+| Configuration    | Description                                                                                   |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| `queue`          | Name of the PGMQ queue.                                                                       |
+| `type`           | Queue ordering mode, currently `STANDER` or `fifo`.                                           |
+| `concurrency`    | Maximum number of workers that can be dispatched concurrently for the queue.                  |
+| `n`              | Number of jobs assigned to each worker batch.                                                 |
+| `maxJobsPerTick` | Maximum number of jobs that the queue can pull during a single tick.                          |
+| `cycleTickLimit` | Maximum number of ticks that the queue can execute during the current engine execution cycle. |
+| `sleep`          | Visibility timeout applied to jobs pulled from PGMQ.                                          |
+| `profile`        | Determines the timing and execution cadence of the queue's ticks.                             |
+| `pooler`         | Determines which pooler is responsible for triggering work for the queue.                     |
+| `consumer`       | Defines how dispatched jobs are delivered to the consumer.                                    |
+
+## Concurrency and Job Calculation
+
+The number of jobs that can be processed during a tick is determined by the relationship between `concurrency`, `n`, and `maxJobsPerTick`.
+
+The basic calculation is:
+
+```text
+concurrency × n = requested jobs per tick
+```
+
+For example:
+
+```text
+concurrency = 10
+n = 10
+
+10 × 10 = 100 jobs per tick
+```
+
+If `maxJobsPerTick` is `1000`, the requested 100 jobs are below the configured ceiling, so the Tick Service can process all 100 jobs during that tick.
+
+```text
+requested jobs = 100
+maxJobsPerTick = 1000
+
+100 < 1000
+```
+
+Increasing concurrency changes the requested job count.
+
+```text
+concurrency = 100
+n = 10
+
+100 × 10 = 1000 jobs per tick
+```
+
+The queue has now reached its `maxJobsPerTick` ceiling.
+
+If the calculated number exceeds `maxJobsPerTick`, the Tick Service limits the amount of work pulled during that tick.
+
+For example:
+
+```text
+concurrency = 100
+n = 15
+
+100 × 15 = 1500 jobs
+maxJobsPerTick = 1000
+```
+
+Only the configured maximum of 1000 jobs can be pulled during that tick.
+
+This provides a form of backpressure between worker concurrency and the amount of work that can be fetched from PGMQ.
+
+## Cycle Tick Limit
+
+`cycleTickLimit` defines how many ticks a queue can execute during the current engine execution cycle.
+
+For example:
+
+```ts
+cycleTickLimit: 10
+```
+
+allows the queue to execute up to 10 ticks during the current execution cycle.
+
+Once the queue reaches its limit, the Tick Service stops scheduling additional ticks for that queue within the current cycle.
+
+```text
+Tick 1
+  ↓
+Tick 2
+  ↓
+Tick 3
+  ↓
+...
+  ↓
+Tick 10
+  ↓
+Queue tick limit reached
+  ↓
+No Tick 11
+```
+
+The limit is particularly important in serverless runtimes, where the engine must avoid keeping a single execution environment active indefinitely.
+
+The queue-level `cycleTickLimit` controls the tick budget of an individual queue.
+
+The engine also provides a global `cycleTickLimit`, which applies to the cumulative number of ticks executed across all queues in the current engine execution cycle.
+
+## Maximum Jobs Per Tick
+
+`maxJobsPerTick` defines the maximum number of jobs a queue can pull during one tick.
+
+It acts as a ceiling over the work requested by the queue's concurrency and batch configuration.
+
+Conceptually:
+
+```text
+requestedJobs = concurrency × n
+
+actualJobs = min(
+    requestedJobs,
+    maxJobsPerTick
+)
+```
+
+For example:
+
+```text
+concurrency = 2
+n = 500
+maxJobsPerTick = 1000
+```
+
+The queue requests:
+
+```text
+2 × 500 = 1000 jobs
+```
+
+Both workers can therefore receive their configured batch of 500 jobs.
+
+If concurrency is increased to 3:
+
+```text
+3 × 500 = 1500 jobs
+```
+
+the queue is still limited to:
+
+```text
+maxJobsPerTick = 1000
+```
+
+The Tick Service therefore prevents the requested work from exceeding the queue-level ceiling.
+
+## Tick Profiles
+
+The `profile` configuration controls how frequently the Tick Service executes for a queue.
+
+A queue can use a predefined timing profile:
+
+```ts
+profile: "REALTIME"
+```
+
+or a custom timing profile:
+
+```ts
+profile: {
+    activePollMs: 100,
+    backoffPollMs: 100,
+    maxTimerMs: 500,
+    idlePollMs: 100
+}
+```
+
+The predefined profiles currently include:
+
+```text
+REALTIME
+STANDARD
+BALANCED
+RELAXED
+ULTRA_EFFICIENT
+```
+
+A custom profile can be used when the predefined timing behavior does not match the workload.
+
+For example, with a 100 ms tick interval:
+
+```text
+Tick 1
+  ↓ 100ms
+Tick 2
+  ↓ 100ms
+Tick 3
+  ↓ 100ms
+Tick 4
+```
+
+A larger interval produces a slower execution cadence:
+
+```text
+Tick 1
+  ↓ 1000ms
+Tick 2
+  ↓ 1000ms
+Tick 3
+```
+
+The profile therefore determines the timing behavior used by the Tick Service for an individual queue.
+
+Different queues can use different profiles within the same Pulsar Engine instance.
+
+## Consumer Dispatch
+
+After jobs have been pulled, the Tick Service dispatches them through the queue's configured consumer.
+
+Pulsar currently supports HTTP consumers and handler-based consumers.
+
+### HTTP Consumer
+
+An HTTP consumer provides a URL and optional headers:
+
+```ts
+consumer: {
+    type: "http",
+    url: "http://localhost:9999/test-f",
+    headers: {
+        "Authorization": `Bearer SUPABASE_ANON_KEY`
+    }
+}
+```
+
+The Tick Service invokes the configured URL when dispatching the jobs.
+
+The URL can point to a serverless function, API endpoint, or another HTTP-compatible consumer.
+
+### Handler Consumer
+
+A handler consumer can provide an asynchronous function directly to the engine.
+
+This allows applications to process jobs without going through an HTTP request.
+
+The Tick Service therefore handles the scheduling and dispatching of the work while the consumer defines how the dispatched work is ultimately executed.
+
+## Engine-Level Configuration
+
+Queue configuration controls the behavior of individual queues. The Pulsar Engine also has global configuration that applies across all queues.
+
+```ts
+const engine = new Pulsar({
+    runtime: PulsarRuntime.PERSISTENT,
+
+    storage: unifiedStorage,
+
+    queues: [
+        Queue1,
+        Queue2,
+        Queue3
+    ],
+
+    swarmConfig: {
+        maxGlobalConcurrency: 1000,
+        globalMaxJobsPerTick: 100_000
+    },
+
+    engine: {
+        selfURL: "http://host.docker.internal:9999/process-job",
+        selfInvocationMethod: "auto_using_pgnet",
+        selfInvocationIntervalSec: 5,
+        healthCheckIntervalSec: 15,
+        cycleTickLimit: 1000,
+        tickConcurrency: "sequential",
+        lockKey: "pulsar:lock:idp",
+        instanceId: crypto.randomUUID()
+    }
+});
+```
+
+The global configuration provides limits and execution behavior for the entire engine instance.
+
+## Global Job Limit
+
+`globalMaxJobsPerTick` defines the maximum number of jobs that can be pulled across all queues during a tick.
+
+For example, if an engine has 10 queues and each queue could otherwise pull 100 jobs:
+
+```text
+10 queues × 100 jobs = 1000 jobs
+```
+
+If:
+
+```ts
+globalMaxJobsPerTick: 100
+```
+
+the engine cannot pull more than 100 jobs in total during that tick, regardless of the individual queue limits.
+
+This provides a global ceiling across the entire engine.
+
+## Global Concurrency Limit
+
+`maxGlobalConcurrency` defines the maximum aggregate worker concurrency across all queues.
+
+For example, if several queues collectively request:
+
+```text
+Queue 1 → 100 workers
+Queue 2 → 100 workers
+Queue 3 → 100 workers
+...
+```
+
+the global concurrency limit prevents the total number of active workers from exceeding the configured engine-level ceiling.
+
+This allows individual queues to have their own concurrency settings while still keeping the entire engine within a global concurrency boundary.
+
+## Global Cycle Tick Limit
+
+The engine-level `cycleTickLimit` controls the total number of ticks that can be executed across all queues during a single engine execution cycle.
+
+For example:
+
+```ts
+cycleTickLimit: 1000
+```
+
+means the engine can execute up to 1000 cumulative queue ticks during the current execution cycle.
+
+The count is global rather than per queue.
+
+For example, with three queues:
+
+```text
+Queue 1 → 10 ticks
+Queue 2 → 10 ticks
+Queue 3 → 10 ticks
+
+Total → 30 ticks
+```
+
+The global limit therefore tracks the combined execution of all queues.
+
+Once the global limit is reached, the current engine execution cycle terminates and the engine can start another execution cycle according to its runtime and self-invocation configuration.
+
+## Tick Concurrency
+
+`tickConcurrency` determines how the Tick Service executes ticks across multiple queues.
+
+Pulsar supports two execution strategies:
+
+```ts
+tickConcurrency: "sequential"
+```
+
+and:
+
+```ts
+tickConcurrency: "parallel"
+```
+
+### Sequential Execution
+
+In sequential mode, the engine executes one queue's tick before moving to the next queue.
+
+```text
+Queue 1 Tick
+    ↓
+Queue 2 Tick
+    ↓
+Queue 3 Tick
+    ↓
+Queue 1 Tick
+    ↓
+...
+```
+
+Each queue waits for the previous queue's tick execution to complete.
+
+### Parallel Execution
+
+In parallel mode, eligible queue ticks can execute concurrently.
+
+```text
+             ┌── Queue 1 Tick
+             │
+Engine ──────┼── Queue 2 Tick
+             │
+             └── Queue 3 Tick
+```
+
+The queues do not need to wait for one another before their tick execution begins.
+
+This allows the engine to process multiple queue ticks concurrently when the runtime and configured resource limits permit it.
+
+## Self Invocation
+
+The Tick Service can also communicate with the engine's self-invocation mechanism.
+
+This is particularly relevant for serverless runtimes where the current execution environment cannot remain active indefinitely.
+
+The engine can be configured with:
+
+```ts
+engine: {
+    selfURL: "http://host.docker.internal:9999/process-job",
+    selfInvocationMethod: "auto_using_pgnet",
+    selfInvocationIntervalSec: 5
+}
+```
+
+When the current execution cycle needs to end, the engine can invoke itself again, allowing Pulsar to continue processing in a new execution cycle.
+
+The exact self-invocation behavior depends on the runtime and the configured invocation method.
+
+## Runtime-Aware Tick Execution
+
+The Tick Service does not assume that every runtime has the same execution constraints.
+
+For a persistent runtime, the Tick Service can continue scheduling ticks within the long-running process.
+
+For a serverless runtime, the Tick Service must account for the runtime's execution window and determine when the current execution cycle should terminate.
+
+For an isolate-based runtime, the engine can use the remaining runtime window when deciding whether additional ticks can safely execute.
+
+This runtime-aware behavior allows the same Tick Service to operate across the different runtime environments supported by Pulsar.
+
+## Tick Execution Flow
+
+The complete flow can be summarized as:
+
+```text
+┌──────────────────────┐
+│   Pulsar Engine      │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│     Tick Service     │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│ Select Eligible      │
+│ Queues                │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│ Calculate Tick       │
+│ Job Budget            │
+│                       │
+│ concurrency × n       │
+│ maxJobsPerTick        │
+│ global limits         │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│ Pull Jobs from PGMQ  │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│ Dispatch to Consumer │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│ Update Tick State    │
+│ and Runtime State    │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│ Clock / Tick Profile │
+│ Determines Next Tick │
+└──────────┬───────────┘
+           │
+           ▼
+      Next Tick
+```
+
+The Tick Service therefore acts as the execution coordinator of the Pulsar Engine. Queue configuration determines what each queue is allowed to do, while engine-level configuration establishes the global boundaries within which all queues operate.

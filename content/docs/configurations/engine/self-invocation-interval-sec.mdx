@@ -1,0 +1,58 @@
+---
+title: Self Invocation Interval (sec)
+description: Configure the frequency (in seconds) at which the engine triggers self-invocations.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The `selfInvocationIntervalSec` property sets how frequently (in seconds) the Pulsar engine triggers its self-invocation cycle to process queued work.
+
+## Usage
+
+Pass `selfInvocationIntervalSec` inside the `engine` configuration block:
+
+```ts
+const engine = new Pulsar({
+  runtime: PulsarRuntime.SERVERLESS,
+  engine: {
+    selfURL: "[http://host.docker.internal:9999/process-job](http://host.docker.internal:9999/process-job)",
+    selfInvocationMethod: "auto_using_pgnet",
+    selfInvocationIntervalSec: 5, // [!code highlight]
+  },
+});
+```
+
+---
+
+## Configuration Reference
+
+- **Default:** `1`
+- **Minimum:** `1`
+
+## Recommendations & Workload Pacing
+
+- **Default (1 second):** Recommended for latency-sensitive workloads or multiple interval-driven queues with frequent, predictable tasks. Jobs are picked up almost immediately.
+- **Higher intervals (e.g., 5+ seconds):** Ideal when you want to reduce host invocation costs and rate limits. This trades off job pickup latency in exchange for significantly fewer total engine invocations over time.
+
+---
+
+## Estimated Monthly Invocations
+
+The lower you set the `selfInvocationIntervalSec`, the higher the total number of monthly invocations your serverless function will execute. 
+
+### 1-Second Interval
+
+```math
+\text{Monthly Invocations} = 1 \times 60 \times 60 \times 24 \times 30 = 2,592,000
+```
+
+### 5-Seconds Interval
+
+```math
+\text{Monthly Invocations} = \left(\frac{1}{5}\right) \times 60 \times 60 \times 24 \times 30 = 518,400
+```
+
+
+<Callout type="info">
+Depending on your serverless hosting provider or database execution layer, total monthly invocations may vary slightly due to network latency and platform execution overhead.
+</Callout>

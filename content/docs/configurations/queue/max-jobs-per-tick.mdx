@@ -1,0 +1,64 @@
+---
+title: Max Jobs Per Tick
+description: Configure the maximum batch ceiling of jobs fetched per single tick loop.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The `maxJobsPerTick` property defines the absolute upper ceiling on how many aggregate jobs a queue can fetch from the database in a single tick cycle.
+
+While queue workers evaluate batch fetch sizes based on worker concurrency and batch multipliers, `maxJobsPerTick` acts as an engine-level backpressure throttle to protect database connections and memory consumption.
+
+## Usage
+
+Pass `maxJobsPerTick` inside the `createQueue` configuration object:
+
+```ts
+export const Queue3 = createQueue({
+  queue: "q_3",
+  maxJobsPerTick: 1000, // [!code highlight]
+  // ... other queue options
+});
+```
+
+---
+
+## How It Works & Backpressure Throttling
+
+When a tick executes, the queue calculates its potential job batch size using its concurrency and batch settings:
+
+```text
+Potential Batch Size = Concurrency × N (Jobs per worker)
+```
+
+If the result of `Concurrency × N` exceeds your configured `maxJobsPerTick`, the engine automatically applies **backpressure throttling**:
+
+1. **Automatic Downscaling:** The engine scales down active worker allocations for that tick so the total fetched jobs strictly satisfy `maxJobsPerTick`.
+2. **Resource Protection:** Prevents sudden memory spikes, excessive database lock contention, or network payload limits during high-volume spikes.
+
+---
+
+## Example Scenario
+
+Suppose your queue configuration is set up as follows:
+- `concurrency`: `50` (50 parallel workers)
+- `n`: `10` (10 jobs fetched per worker)
+- Potential total jobs requested: `50 × 10 = 500` jobs
+
+If you set `maxJobsPerTick: 200`:
+* The engine recognizes that `500 > 200`.
+* It throttles the dispatch for that tick, capping the total fetched payload at **200 jobs**.
+* Active workers are scaled down proportionally for that tick to handle only the throttled batch size.
+
+<Mermaid
+  chart="
+graph LR;
+  Calc[Calculate: Concurrency x N] --> Check{Exceeds maxJobsPerTick?};
+  Check -->|No| FetchAll[Fetch Full Requested Batch];
+  Check -->|Yes| Throttle[Apply Backpressure Throttling -> Scale Down Batch to Limit];
+"
+/>
+
+<Callout type="info">
+`maxJobsPerTick` is essential when running high concurrency queues against constrained database instances (such as Supabase PGMQ) to keep tick query payloads predictable and lightweight.
+</Callout>

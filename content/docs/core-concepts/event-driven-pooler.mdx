@@ -1,0 +1,92 @@
+---
+title: Event Driven Pooler (EDP)
+description: Your first document
+---
+
+# Event-Driven Pooler
+
+The **Event-Driven Pooler (EDP)** is Pulsar's event-driven queue processing mode.
+
+Unlike the Interval-Driven Pooler, EDP does **not continuously wake up and poll queues**. The Pulsar Engine remains idle until an event indicates that new work has been added to an event-driven queue.
+
+## How It Works
+
+When Pulsar is installed, database triggers are created for the PGMQ queues configured to use the Event-Driven Pooler.
+
+When a new job is inserted into one of those queues, the database trigger invokes the Pulsar Engine.
+
+The engine then starts processing the queue.
+
+If more jobs remain after the current processing cycle, Pulsar continues processing them through its normal self-invocation mechanism. The engine keeps invoking itself until the queue is completely drained.
+
+Once there is no more work, the lifecycle ends.
+
+There is no continuous polling after that point.
+
+## Event-Driven Lifecycle
+
+The fundamental lifecycle of EDP is:
+
+**Job Inserted → Database Trigger → Pulsar Engine → Process Jobs → More Work? → Self-Invoke → Process Again → Queue Drained → Stop**
+
+After the queue has been drained, Pulsar becomes completely idle.
+
+The next engine execution only happens when another job is inserted and the database trigger produces another event.
+
+## Trigger-Based Activation
+
+The important distinction is **who starts the engine**.
+
+With IDP, the engine starts itself according to a configured interval.
+
+With EDP, the **database starts the engine** when new work arrives.
+
+The engine therefore does not need to continuously run after deployment just to check whether a queue contains jobs.
+
+For a serverless deployment, this means there is no unnecessary execution while an event-driven queue is empty. The engine is activated only when the queue receives work.
+
+## Invocation Deduplication
+
+EDP also has an enforcement mechanism to prevent a large number of job insertions from producing an equivalent number of engine invocations.
+
+For example, if 1,000 jobs are inserted into an event-driven queue, Pulsar does not need to wake the serverless engine 1,000 separate times.
+
+The database-side trigger and invocation mechanism ensures that the event-driven processing is coordinated so that **one Pulsar Engine execution becomes responsible for processing the resulting workload**.
+
+The purpose is to avoid a situation where every inserted job independently creates a new engine invocation, only for those invocations to discover that another engine instance is already processing the queue.
+
+## Locking
+
+Once the engine is invoked, Pulsar still uses locking to coordinate active processing.
+
+The lock ensures that only the appropriate engine instance owns the queue's active processing lifecycle.
+
+The important distinction is that the lock is **not being used as a way to prevent thousands of unnecessary invocations after they have already happened**.
+
+The trigger and database-side coordination prevent that excessive invocation pattern in the first place.
+
+The lock then protects the actual processing lifecycle once the engine is active.
+
+## Why Use Event-Driven Pooling?
+
+EDP is designed for workloads where processing should begin **because work arrived**, rather than because a polling interval elapsed.
+
+It is particularly useful when:
+
+* Queues are mostly idle.
+* Jobs should begin processing soon after arrival.
+* Continuous polling would create unnecessary execution overhead.
+* The queue can provide a reliable database event when new work is inserted.
+* Processing should naturally stop when the queue becomes empty.
+
+## The Core Idea
+
+The simplest way to think about the Event-Driven Pooler is:
+
+> **EDP does not continuously look for work. Work tells Pulsar when to wake up.**
+
+Once awakened, Pulsar processes the available jobs and self-invokes as necessary until the queue is drained.
+
+When there is nothing left to process, the engine goes silent.
+
+It stays silent until the next job arrives and the database trigger starts the lifecycle again.

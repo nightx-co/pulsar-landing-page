@@ -1,0 +1,82 @@
+---
+title: Profile
+description: Configure polling cadence and execution timing delays for a queue.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The `profile` setting configures how aggressively a queue polls for new jobs across different operational states (active, backed-off, or idle).
+
+You can pass a predefined string preset (`'REALTIME'`, `'STANDARD'`, `'BALANCED'`, `'RELAXED'`, `'ULTRA_EFFICIENT'`) or supply a custom `TimingProfile` object to fine-tune exact polling millisecond intervals.
+
+## Usage
+
+Pass `profile` inside the `createQueue` configuration object:
+
+### Using a Preset String
+
+```ts
+export const Queue3 = createQueue({
+  queue: "q_3",
+  type: "STANDARD",
+  profile: "REALTIME", // [!code highlight]
+  // ... other queue options
+});
+```
+
+### Using a Custom Timing Object
+
+```ts
+export const Queue3 = createQueue({
+  queue: "q_3",
+  type: "STANDARD",
+  profile: { // [!code highlight]
+    activePollMs: 100, // [!code highlight]
+    backoffPollMs: 100, // [!code highlight]
+    maxTimerMs: 100, // [!code highlight]
+    idlePollMs: 100, // [!code highlight]
+  }, // [!code highlight]
+  // ... other queue options
+});
+```
+
+---
+
+## Predefined Presets
+
+- **`REALTIME`:** Ultra-low latency polling for time-critical queues. Consumes higher database resources.
+- **`STANDARD` (Default):** Optimal balance between response speed and resource consumption.
+- **`BALANCED`:** Moderated polling intervals for steady background queue execution.
+- **`RELAXED`:** Slower polling cadence designed to conserve memory and database queries.
+- **`ULTRA_EFFICIENT`:** Maximum delay between polls, ideal for low-priority or batch processing tasks.
+
+---
+
+## Custom Timing Profile Structure
+
+When setting custom object values, `profile` accepts the following properties:
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `activePollMs` | `number` | Polling delay (in ms) when jobs are actively processing and worker slots are available (e.g., `10ms` – `50ms`). |
+| `backoffPollMs` | `number` | Re-check delay (in ms) when all worker slots are currently full (e.g., `100ms` – `500ms`). |
+| `maxTimerMs` | `number` | Maximum `setTimeout` duration allowed before re-evaluating queue metrics and state. |
+| `idlePollMs` | `number` (optional) | Fallback poll interval when the queue is idle (acts as a safety net if database event triggers/notifiers are missed). |
+
+---
+
+## State Transition Flow
+
+<Mermaid
+  chart="
+graph TD;
+  Idle[Queue Idle] -->|New Job Arrives / Notified| Active[Active State: Polls at activePollMs];
+  Active -->|All Concurrency Slots Full| Full[Slots Busy: Delay at backoffPollMs];
+  Full -->|Slot Frees Up| Active;
+  Active -->|Queue Drained| IdleFallback[Idle State: Fallback Poll at idlePollMs];
+"
+/>
+
+<Callout type="info">
+Use string presets for standard queue workloads. Supply a custom `TimingProfile` object when tuning ultra-low latency microservices or heavily throttled database environments.
+</Callout>

@@ -1,0 +1,99 @@
+---
+title: Consumer
+description: Configure job execution handlers via HTTP webhooks or direct JavaScript callbacks.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The `consumer` configuration determines how the Pulsar engine dispatches claimed jobs to your application logic.
+
+Pulsar supports two distinct consumer execution patterns: **HTTP Webhook Consumers** (for decoupled, remote, or polyglot job dispatches) and **Callback Consumers** (for in-process, direct function execution).
+
+## Usage
+
+Pass `consumer` inside the `createQueue` configuration object:
+
+### 1. HTTP Consumer (`type: "http"`)
+
+Dispatches claimed jobs as HTTP POST requests to a specified endpoint.
+
+```ts
+export const Queue3 = createQueue({
+  queue: "q_3",
+  type: "STANDARD",
+  consumer: { // [!code highlight]
+    type: "http", // [!code highlight]
+    url: "http://localhost:9999/test-f", // [!code highlight]
+    headers: { // [!code highlight]
+      "Authorization": `Bearer ${process.env.SUPABASE_ANON_KEY}`, // [!code highlight]
+    }, // [!code highlight]
+    timeoutMs: 5000, // [!code highlight]
+  }, // [!code highlight]
+  // ... other queue options
+});
+```
+
+### 2. Callback Consumer (`type: "callback"`)
+
+Executes an in-process asynchronous function directly within the local JS runtime.
+
+```ts
+export const Queue3 = createQueue({
+  queue: "q_3",
+  type: "STANDARD",
+  consumer: { // [!code highlight]
+    type: "callback", // [!code highlight]
+    handler: async (job) => { // [!code highlight]
+      console.log(`Processing job for queue ${job.queue}:`, job.payload); // [!code highlight]
+      // Process job logic here... // [!code highlight]
+    }, // [!code highlight]
+  }, // [!code highlight]
+  // ... other queue options
+});
+```
+
+---
+
+## Configuration Reference
+
+### HTTP Consumer Options
+
+| Property | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `type` | `"http"` | Yes | Specifies an HTTP webhook endpoint execution pattern. |
+| `url` | `string` | Yes | The destination endpoint URL where job payloads will be POSTed. |
+| `headers` | `Record<string, string>` | No | Custom HTTP request headers (e.g., authorization tokens, API keys). |
+| `timeoutMs` | `number` | No | Request timeout duration in milliseconds before marking the dispatch as failed. |
+
+### Callback Consumer Options
+
+| Property | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `type` | `"callback"` | Yes | Specifies an in-process callback execution pattern. |
+| `handler` | `(job: JobContext) => Promise<void>` | Yes | The async handler function invoked when a worker claims a job batch. |
+
+---
+
+## The `JobContext` Structure
+
+When using a callback consumer, your `handler` receives a `JobContext` object containing job details and operational metadata:
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `workerId` | `string` | The unique ID of the worker thread that claimed this batch. Essential for worker slot deregistration and lifecycle tracking. |
+| `queue` | `string` | The ID/name of the queue from which the job was pulled. |
+| `payload` | `T` | The primary data payload associated with the job. |
+| `attempts` | `number` | The total number of execution attempts this job has undergone (for retry tracking). |
+| `timestamp` | `number` | Unix timestamp indicating when the job was dispatched or processed. |
+
+---
+
+## Callback Worker Deregistration Responsibility
+
+When using `type: "callback"` for job dispatching, capturing the `workerId` alongside the job context arguments is mandatory. 
+
+Worker deregistration **must be explicitly handled by your application-layer code** once processing completes. The Pulsar engine is **not** responsible for automatically deregistering workers in callback mode.
+
+<Callout type="warn">
+**Critical Engine Freeze Warning:** If worker deregistration is omitted or ignored in your callback handler, the Pulsar engine will assume those worker slots remain perpetually occupied. Active concurrency slots will stay locked, causing queue execution to stall or pause completely until those workers are manually deregistered by the application layer.
+</Callout>

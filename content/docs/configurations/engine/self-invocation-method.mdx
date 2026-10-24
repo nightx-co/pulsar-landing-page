@@ -1,0 +1,59 @@
+---
+title: Self Invocation Method
+description: Configure how the engine triggers its next execution cycle in serverless environments.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The `selfInvocationMethod` property defines how Pulsar triggers its next loop iteration when running in serverless or V8 isolate environments. 
+
+## When is it needed?
+
+- **Serverless & V8 Isolates:** Required to determine how the engine continuously re-invokes itself.
+- **Persistent Runtimes:** Not needed. Persistent workers maintain an active event loop and execute cycles automatically.
+
+---
+
+## Configuration Options
+
+Pulsar supports two self-invocation strategies:
+
+### 1. `auto_using_pgnet` (Default)
+Automates self-invocations using PostgreSQL's `pg_net` extension. The engine directly schedules an asynchronous HTTP request to its own `selfURL` upon completing a cycle.
+
+```ts
+const engine = new Pulsar({
+    runtime: PulsarRuntime.SERVERLESS,
+    engine: {
+        selfURL: "http://host.docker.internal:9999/process-job",
+        selfInvocationMethod: "auto_using_pgnet",
+    },
+});
+```
+
+### 2. `manual`
+
+Delegates self-invocations to your custom application code. 
+
+When set to `manual`, you must provide an async `handler` function. The engine calls this handler at the end of a cycle, passing `selfURL` so you can fire off an asynchronous re-invocation request.
+
+<Callout type="warn">
+Do **not** use standard synchronous HTTP clients (like a direct `fetch` await) to call `selfURL`. A synchronous request holds the current serverless instance open. The re-invocation pattern requires a **fire-and-forget** approach—such as Upstash QStash, AWS SNS/EventBridge, or background task queues—to trigger the next cycle independently.
+</Callout>
+
+```ts
+const engine = new Pulsar({
+    runtime: PulsarRuntime.SERVERLESS,
+    engine: {
+        selfURL: "http://host.docker.internal:9999/process-job",
+        selfInvocationMethod: "manual",
+        handler: async (selfUrl) => {
+            // Fire-and-forget re-invocation (e.g., Upstash QStash, AWS SNS, etc.)
+            await qstashClient.publishJSON({
+                url: selfUrl,
+                body: { type: "PULSAR_TICK" },
+            });
+        },
+    },
+});
+```

@@ -1,0 +1,31 @@
+---
+title: Health Check Interval
+description: Configure how frequently the engine inspects its internal health and runtime state.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The `healthCheckIntervalSec` property defines how often (in seconds) the Pulsar engine evaluates its own internal health, active background tasks, and runtime state.
+
+## Usage
+
+Pass `healthCheckIntervalSec` inside the `engine` configuration object:
+
+```ts
+const engine = new Pulsar({
+  runtime: PulsarRuntime.PERSISTENT,
+  engine: {
+    healthCheckIntervalSec: 15, // [!code highlight]
+  },
+});
+```
+
+---
+
+## Configuration Reference
+
+- **Default:** `15` seconds
+
+<Callout type="info">
+Keeping the default interval of 15 seconds ensures timely detection of runtime stalls or unhealthy worker states without introducing unnecessary overhead.
+</Callout>

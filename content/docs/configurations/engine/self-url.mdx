@@ -1,0 +1,27 @@
+---
+title: Self URL
+description: Configure how the engine reaches its own HTTP endpoints for self-invocation.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The `selfURL` parameter specifies the HTTP(S) endpoint where the Pulsar engine instance can reach itself to handle self-invocations and keep execution cycles running.
+
+## When is it needed?
+
+`selfURL` requirement depends directly on your chosen runtime:
+
+- **Required for Serverless & V8 Isolates:** In serverless functions or V8 isolate environments (such as Edge runtimes), the engine relies on HTTP self-invocations to keep processing jobs.
+- **Not required for Persistent Runtimes:** If `runtime` is set to `PulsarRuntime.PERSISTENT`, the engine runs continuously in memory, making `selfURL` unnecessary.
+
+## Usage
+
+Pass `selfURL` inside the `engine` object when running in a serverless or isolate setup:
+
+```ts
+const engine = new Pulsar({
+  runtime: PulsarRuntime.SERVERLESS,
+  engine: {
+    selfURL: "[http://host.docker.internal:9999/process-job](http://host.docker.internal:9999/process-job)", // [!code highlight]
+  }
+});

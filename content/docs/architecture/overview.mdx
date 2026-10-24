@@ -1,0 +1,107 @@
+---
+title: Overview
+description: Your first document
+---
+
+# Pulsar Engine Architecture
+
+Pulsar is a messaging puller designed to operate across serverless and persistent runtimes. It uses [PGMQ](https://github.com/tembo-io/pgmq) as its underlying messaging queue and provides a runtime-independent engine for pulling, processing, and dispatching messages.
+
+This page provides a high-level overview of the Pulsar engine architecture. Each major subsystem is documented separately in its own section.
+
+## Architecture Overview
+
+At a high level, Pulsar is composed of several core systems:
+
+- **Tick Engine** — Drives the execution cycle of the Pulsar engine.
+- **Event-Driven Pooler** — Pulls and processes messages based on incoming events.
+- **Interval-Driven Pooler** — Pulls messages according to a configured interval.
+- **Unified Storage System** — Provides a common storage interface backed by PostgreSQL or Redis.
+- **Multi-Runtime Support** — Allows Pulsar to operate across serverless isolates, serverless containers, and persistent runtimes.
+
+These systems work together while adapting their execution behavior to the runtime in which Pulsar is deployed.
+
+## Unified Storage
+
+Pulsar provides a unified storage system that can use either **PostgreSQL** or **Redis** as its operational storage driver.
+
+By default, Pulsar uses PostgreSQL. This allows a deployment to operate without introducing an additional infrastructure dependency such as Redis.
+
+Redis can be configured as an alternative storage driver when higher write throughput is required for Pulsar's internal operational processing. In this configuration, Redis handles high-frequency operational writes and internal state updates, reducing the amount of operational write activity performed against PostgreSQL.
+
+The application can therefore choose between:
+
+- **PostgreSQL** — Default and requires no additional storage infrastructure when PostgreSQL is already being used by PGMQ.
+- **Redis** — Optional driver for high-frequency operational processing.
+
+The unified storage interface allows the rest of the Pulsar engine to operate without being tightly coupled to a specific storage implementation.
+
+## Multi-Runtime Support
+
+Pulsar is designed to operate across multiple runtime models.
+
+### Serverless Isolate Runtimes
+
+Some serverless platforms use V8 isolates to execute functions. Examples include Cloudflare Workers and Supabase Edge Functions.
+
+An isolate can remain warm for a period of time after the initial request. Subsequent requests routed to the same isolate can therefore execute within the same runtime instance while it remains available.
+
+Pulsar can use this runtime behavior to maintain in-memory engine state and coordinate execution across requests. This is particularly relevant for interval-driven processing, where the engine needs to continue its execution cycle while the isolate remains active.
+
+### Serverless Container Runtimes
+
+Other serverless platforms, such as AWS Lambda, execute functions inside isolated serverless environments rather than V8 isolates.
+
+Each invocation runs within its own execution environment, subject to the runtime's configured execution time and memory limits.
+
+Pulsar adapts its execution model to these constraints rather than assuming that an isolate-based runtime is available.
+
+### Persistent Runtimes
+
+Pulsar can also run inside persistent environments such as:
+
+- Node.js processes
+- Deno processes
+- Docker containers
+- Dedicated VPS instances
+- Dedicated servers
+
+In these environments, the process can remain alive continuously. Pulsar can therefore maintain its engine state and execute its processing cycle without depending on a serverless runtime window.
+
+## Tick Engine
+
+The Tick Engine is the execution loop that drives the Pulsar engine.
+
+A tick occurs at a configured interval. On each tick, Pulsar executes a sequence of operations and then schedules the next tick.
+
+At a high level, a tick performs the following operations:
+
+1. Pull jobs from the queue.
+2. Serialize the jobs for processing.
+3. Dispatch the jobs to workers.
+4. Register and deregister workers as required.
+5. Calculate runtime-specific execution state, such as remaining isolate time when applicable.
+6. Schedule the next tick.
+7. Repeat the cycle.
+
+The exact behavior of a tick can vary depending on the runtime and the configured pooler, but the Tick Engine provides the recurring execution mechanism used by Pulsar.
+
+## Engine Execution Model
+
+The Pulsar engine does not assume that every runtime behaves in the same way.
+
+Instead, its execution model adapts to the runtime:
+
+**Isolate runtime**
+
+`Request → Warm isolate → Tick → Process → Next tick`
+
+**Serverless container**
+
+`Invocation → Tick → Process → Runtime limit`
+
+**Persistent runtime**
+
+`Process → Tick → Process → Tick → ...`
+
+This runtime-aware execution model allows the same Pulsar engine to operate across short-lived serverless environments and continuously running infrastructure.

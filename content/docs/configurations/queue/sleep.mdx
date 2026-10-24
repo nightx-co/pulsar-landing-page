@@ -1,0 +1,33 @@
+---
+title: Sleep
+description: Configure the message visibility timeout (in seconds) for queued jobs.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The `sleep` property defines the PGMQ visibility timeout (in seconds) applied to jobs when they are pulled from the queue for processing.
+
+When a worker claims a job, `sleep` hides that message from all other queue consumers. If the active worker completes or fails the job within this window, the job is finalized; if the worker crashes or stalls beyond the `sleep` duration, the visibility timeout expires and the job automatically becomes available again for other workers to claim.
+
+## Usage
+
+Pass `sleep` inside the `createQueue` configuration object:
+
+```ts
+export const Queue3 = createQueue({
+  queue: "q_3",
+  sleep: 10, // [!code highlight]
+  // ... other queue options
+});
+```
+
+Always set `sleep` to a value higher than the expected maximum execution duration of your job handler logic. If set too short, another consumer might pick up and execute the same job concurrently while the original worker is still processing it.
+
+---
+
+## Configuration Reference
+
+- **Type:** `number` (seconds)
+- **Scope:** Per-queue execution
+
+---

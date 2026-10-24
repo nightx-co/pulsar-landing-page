@@ -1,0 +1,16 @@
+{
+  "title": "Engine Configurations",
+  "description": "Understand how Pulsar polls, locks, dispatches, and recovers work.",
+  "root": true,
+  "pages": [
+    "runtime",
+    "storage",
+    "self-url",
+    "self-invocation-method",
+    "self-invocation-interval-sec",
+    "health-check-interval-sec",
+    "tick-concurrency",
+    "global-concurrency",
+    "global-tick-cycle-limit"
+  ]
+}
